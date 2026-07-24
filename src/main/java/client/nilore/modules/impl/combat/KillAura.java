@@ -25,6 +25,7 @@ import net.minecraft.client.renderer.texture.DynamicTexture;
 import net.minecraft.client.gui.screens.inventory.AbstractContainerScreen;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.util.Mth;
+import net.minecraft.network.protocol.game.ServerboundMovePlayerPacket;
 import net.minecraft.world.InteractionHand;
 import net.minecraftforge.client.ForgeHooksClient;
 import net.minecraft.world.entity.Entity;
@@ -100,9 +101,18 @@ public class KillAura extends Module {
     public final BooleanSetting infSwitch       = new BooleanSetting("Infinity Switch", false);
     public final BooleanSetting preferBaby      = new BooleanSetting("Prefer Baby", false);
     public final BooleanSetting morePart        = new BooleanSetting("More Particles", false);
-    public final BooleanSetting keepSprint      = new BooleanSetting("Keep Sprint", true);
-    public final BooleanSetting fix             = new BooleanSetting("Fix", false);
-    public final BooleanSetting overrideRaycast = new BooleanSetting("Override Raycast", true);
+    public final ModeSetting style = new ModeSetting("Style", "New", "Old", "NewFix").withDefault("New");
+
+    public final BooleanSetting keepSprint      = new BooleanSetting("Keep Sprint", false,
+            () -> this.style.is("New") || this.style.is("Old"));
+    public final BooleanSetting keepSprintNewFix = new BooleanSetting("Keep Sprint", false,
+            () -> this.style.is("NewFix"));
+    public final BooleanSetting fix             = new BooleanSetting("Fix", false,
+            () -> this.style.is("Old"));
+    public final BooleanSetting overrideRaycast = new BooleanSetting("Override Raycast", true,
+            () -> this.style.is("Old") || this.style.is("NewFix"));
+    public final BooleanSetting throughWalls    = new BooleanSetting("Through Walls", false,
+            () -> this.style.is("NewFix"));
     public final BooleanSetting ignoreSkipTicks = new BooleanSetting("Ignore skip ticks", false);
     public final BooleanSetting fakeAutoBlock   = new BooleanSetting("Fake AutoBlock", true);
     public final BooleanSetting test            = new BooleanSetting("Test", false);
@@ -169,6 +179,11 @@ public class KillAura extends Module {
         this.attackTimes = 0;
         this.rotation = null;
         super.onDisable();
+    }
+
+    @Override
+    public String getSuffix() {
+        return this.style.getValue();
     }
 
     private void reinitOrganicModel() {
@@ -403,7 +418,7 @@ public class KillAura extends Module {
 
     @EventTarget
     public void onSprint(SprintEvent event) {
-        if (this.keepSprint.getValue()) {
+        if (!this.style.is("NewFix") && this.keepSprint.getValue()) {
             ++this.sprintTickCounter;
             if (this.sprintTickCounter % 2 == 0 && mc.player != null) {
                 mc.player.setSprinting(false);
@@ -436,6 +451,11 @@ public class KillAura extends Module {
             this.sprintCounter = 0;
             return;
         }
+        if (this.style.is("NewFix") && (Boolean) this.keepSprintNewFix.getValue()
+                && mc.player.getFoodData().getFoodLevel() > 6) {
+            mc.player.setSprinting(true);
+        }
+
         boolean isSwitch = this.switchSize.getValue().intValue() > 1
                 || this.infSwitch.getValue()
                 || this.multiAttack.getValue();
@@ -445,19 +465,22 @@ public class KillAura extends Module {
         this.currentBestHit = null;
         if (aimingTarget != null) {
             this.currentBestHit = RotationUtil.getBestHit(aimingTarget);
-            Rotation rawTarget = this.currentBestHit != null ? this.currentBestHit.rotation() : null;
-            if (rawTarget != null) {
-                Rotation from = RotationHandler.prevRotation != null
-                        ? RotationHandler.prevRotation
-                        : new Rotation(mc.player.getYRot(), mc.player.getXRot());
-                Rotation organic = this.applyOrganicRotation(from, rawTarget, 1.0f);
-                this.rotation = (organic != null
-                        && !Float.isNaN(organic.getYaw())
-                        && !Float.isNaN(organic.getPitch())
-                        && !Float.isInfinite(organic.getYaw())
-                        && !Float.isInfinite(organic.getPitch()))
-                        ? organic
-                        : rawTarget;
+            if (this.currentBestHit != null && this.currentBestHit.rotation() != null) {
+                if (this.style.is("NewFix")) {
+                    this.rotation = null;
+                } else {
+                    Rotation from = RotationHandler.prevRotation != null
+                            ? RotationHandler.prevRotation
+                            : new Rotation(mc.player.getYRot(), mc.player.getXRot());
+                    Rotation organic = this.applyOrganicRotation(from, this.currentBestHit.rotation(), 1.0f);
+                    this.rotation = (organic != null
+                            && !Float.isNaN(organic.getYaw())
+                            && !Float.isNaN(organic.getPitch())
+                            && !Float.isInfinite(organic.getYaw())
+                            && !Float.isInfinite(organic.getPitch()))
+                            ? organic
+                            : this.currentBestHit.rotation();
+                }
             } else {
                 this.rotation = null;
             }
@@ -491,7 +514,7 @@ public class KillAura extends Module {
             this.targetIndex = 0;
         }
         target = targetList.get(this.targetIndex);
-        if (this.delayMode.is("1.8")) {
+        if (this.style.is("Old")) {
             float apsValue;
             float minApsValue;
             if (NoXZMode.isAttacking) {
@@ -504,15 +527,26 @@ public class KillAura extends Module {
                 apsValue = this.maxAps.getValue().floatValue();
                 minApsValue = this.minAps.getValue().floatValue();
             }
-            if (this.keepSprint.getValue()) {
+            if ((Boolean) this.keepSprint.getValue()) {
                 apsValue *= 2.0f;
                 minApsValue *= 2.0f;
             }
             this.attacks += (float)(MathUtil.randomDouble(minApsValue, apsValue) / 20.0);
-        } else if (this.sprintCounter > 0) {
-            this.sprintCounter--;
-        } else if (mc.player.getAttackStrengthScale(0.0f) >= 0.9f) {
-            this.doAttack();
+        } else {
+            float apsValue = this.maxAps.getValue().floatValue();
+            float minApsValue = this.minAps.getValue().floatValue();
+            if (NoXZMode.isAttacking) {
+                int kbAttackAmount = AntiKB.INSTANCE != null
+                        ? AntiKB.INSTANCE.attackAmount.getValue().intValue()
+                        : 0;
+                apsValue -= kbAttackAmount;
+                minApsValue -= kbAttackAmount;
+            }
+            if (!this.style.is("NewFix") && (Boolean) this.keepSprint.getValue()) {
+                apsValue *= 2.0f;
+                minApsValue *= 2.0f;
+            }
+            this.attacks += (float)(MathUtil.randomDouble(minApsValue, apsValue) / 20.0);
         }
     }
 
@@ -528,7 +562,7 @@ public class KillAura extends Module {
                 && (this.ignoreSkipTicks.getValue() || ClientBase.delayPackets.isEmpty()
                 || (Critical.INSTANCE != null && Critical.INSTANCE.isEnabled()))) {
             while (this.attacks >= 1.0f) {
-                if (this.fix.getValue()) {
+                if (this.style.is("Old") && (Boolean) this.fix.getValue()) {
                     if (!this.doAttack()) {
                         break;
                     }
@@ -551,8 +585,10 @@ public class KillAura extends Module {
         if (this.rotation == null) return false;
 
         HitResult hitResult;
-        if (this.overrideRaycast.getValue() && this.rotation != null) {
-            hitResult = RotationUtil.performRaycast(this.rotation);
+        if ((this.style.is("Old") || this.style.is("NewFix"))
+                && (Boolean) this.overrideRaycast.getValue()
+                && this.currentBestHit != null && this.currentBestHit.rotation() != null) {
+            hitResult = RotationUtil.performRaycast(this.currentBestHit.rotation());
             if (hitResult == null || hitResult.getType() != HitResult.Type.ENTITY) {
                 return false;
             }
@@ -568,10 +604,15 @@ public class KillAura extends Module {
         }
         if (this.multiAttack.getValue()) {
             int attacked = 0;
-            Rotation aimRot = RotationHandler.targetRotation;
+            Rotation aimRot = this.currentBestHit != null && this.currentBestHit.rotation() != null
+                    ? this.currentBestHit.rotation()
+                    : RotationHandler.targetRotation;
+            if (aimRot == null) {
+                aimRot = new Rotation(mc.player.getYRot(), mc.player.getXRot());
+            }
             for (Entity entity : targetList) {
                 if (mc.player == null) break;
-                if (aimRot != null && RotationUtil.getHitDistance(entity, mc.player.getEyePosition(), aimRot) >= 3.0) continue;
+                if (RotationUtil.getHitDistance(entity, mc.player.getEyePosition(), aimRot) >= 3.0) continue;
                 if (this.attackEntity(entity)) {
                     attacked++;
                 }
@@ -663,14 +704,15 @@ public class KillAura extends Module {
             }
         }
         // Wall check — reject if a block is between player and entity
-        if (mc.level == null) return false;
-        Vec3 eyePos = mc.player.getEyePosition(1.0f);
-        Vec3 targetPoint = RotationUtil.closestPoint(eyePos, entity.getBoundingBox());
-        // Skip wall check if player is inside the entity's bounding box
-        if (eyePos.distanceToSqr(targetPoint) > 1.0E-4) {
-            BlockHitResult blockHit = mc.level.clip(new ClipContext(eyePos, targetPoint, ClipContext.Block.OUTLINE, ClipContext.Fluid.NONE, mc.player));
-            if (blockHit.getType() == HitResult.Type.BLOCK) {
-                return false;
+        if (this.style.is("NewFix") && !(Boolean) this.throughWalls.getValue()) {
+            if (mc.level == null) return false;
+            Vec3 eyePos = mc.player.getEyePosition(1.0f);
+            Vec3 targetPoint = RotationUtil.closestPoint(eyePos, entity.getBoundingBox());
+            if (eyePos.distanceToSqr(targetPoint) > 1.0E-4) {
+                BlockHitResult blockHit = mc.level.clip(new ClipContext(eyePos, targetPoint, ClipContext.Block.OUTLINE, ClipContext.Fluid.NONE, mc.player));
+                if (blockHit.getType() == HitResult.Type.BLOCK) {
+                    return false;
+                }
             }
         }
         return RotationUtil.isEntityInFov(entity, this.fov.getValue().floatValue() / 2.0f);
@@ -714,6 +756,10 @@ public class KillAura extends Module {
         if (mc.player == null || mc.gameMode == null) return false;
         if (this.isWebPlacing()) return false;
 
+        if (this.style.is("NewFix")) {
+            return this.attackEntityNewFix(entity);
+        }
+
         float currentYaw = mc.player.getYRot();
         float currentPitch = mc.player.getXRot();
         if (RotationHandler.targetRotation != null) {
@@ -721,12 +767,13 @@ public class KillAura extends Module {
             mc.player.setXRot(RotationHandler.targetRotation.getPitch());
         }
 
-        boolean canAttackWithSprint = !this.keepSprint.getValue()
-                || this.sprintTickCounter % 2 == 0;
-        if (!canAttackWithSprint) {
-            mc.player.setYRot(currentYaw);
-            mc.player.setXRot(currentPitch);
-            return false;
+        if (!this.style.is("NewFix") && (Boolean) this.keepSprint.getValue()) {
+            boolean canAttackWithSprint = this.sprintTickCounter % 2 == 0;
+            if (!canAttackWithSprint) {
+                mc.player.setYRot(currentYaw);
+                mc.player.setXRot(currentPitch);
+                return false;
+            }
         }
 
         ++this.attackTimes;
@@ -741,6 +788,10 @@ public class KillAura extends Module {
             mc.player.crit(entity);
         }
 
+        if (!this.style.is("NewFix") && (Boolean) this.keepSprint.getValue()) {
+            mc.player.setDeltaMovement(mc.player.getDeltaMovement().multiply(0.6, 1.0, 0.6));
+        }
+
         mc.player.setYRot(currentYaw);
         mc.player.setXRot(currentPitch);
 
@@ -748,6 +799,56 @@ public class KillAura extends Module {
             this.sprintCounter = (int) mc.player.getCurrentItemAttackStrengthDelay();
         }
         return true;
+    }
+
+    private boolean attackEntityNewFix(Entity entity) {
+        if (mc.getConnection() == null) return false;
+
+        float origYaw = mc.player.getYRot();
+        float origPitch = mc.player.getXRot();
+
+        Rotation targetRot = this.currentBestHit != null ? this.currentBestHit.rotation() : null;
+        if (targetRot == null) return false;
+
+        float jitter1 = rotationJitter();
+        float jitter2 = rotationJitter();
+        float jitter3 = rotationJitter();
+
+        mc.getConnection().send(new ServerboundMovePlayerPacket.PosRot(
+                mc.player.getX(), mc.player.getY(), mc.player.getZ(),
+                targetRot.getYaw() + jitter1,
+                targetRot.getPitch() + jitter1,
+                mc.player.onGround()
+        ));
+
+        mc.getConnection().send(new ServerboundMovePlayerPacket.PosRot(
+                mc.player.getX(), mc.player.getY(), mc.player.getZ(),
+                targetRot.getYaw() + jitter2,
+                targetRot.getPitch() + jitter2,
+                mc.player.onGround()
+        ));
+
+        ++this.attackTimes;
+        mc.gameMode.attack(mc.player, entity);
+        mc.player.swing(InteractionHand.MAIN_HAND);
+        if (this.morePart.getValue()) {
+            mc.player.magicCrit(entity);
+            mc.player.crit(entity);
+        }
+
+        mc.getConnection().send(new ServerboundMovePlayerPacket.PosRot(
+                mc.player.getX(), mc.player.getY(), mc.player.getZ(),
+                origYaw + jitter3,
+                origPitch + jitter3,
+                mc.player.onGround()
+        ));
+
+        return true;
+    }
+
+    private float rotationJitter() {
+        float offset = (float) (Math.random() * 0.04 + 0.03);
+        return Math.random() > 0.5 ? offset : -offset;
     }
 
     private boolean isWebPlacing() {

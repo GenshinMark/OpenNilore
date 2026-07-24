@@ -56,8 +56,14 @@ public class NotificationHud extends HudElement {
     private final NumberSetting duration = new NumberSetting("Duration (ms)", 800, 500, 10000, 100);
     private final NumberSetting maxNotifications = new NumberSetting("Max Notifications", 7, 1, 10, 1);
     private final BooleanSetting needSound = new BooleanSetting("Sound", true);
-    private final ModeSetting whichSound = new ModeSetting("Type", "Sigma", "Lever").withDefault("Sigma");
-    private final ModeSetting style = new ModeSetting("Style", "southside", "simple").withDefault("southside");
+    private final ModeSetting whichSound = new ModeSetting("Type", "Sigma", "Lever").withDefault("Lever");
+    private final ModeSetting style = new ModeSetting("Style", "southside", "simple", "naven").withDefault("southside");
+    private final NumberSetting navenTextXOff = new NumberSetting("Naven Text X Off", 7, 0, 20, 0.5f);
+    private final NumberSetting navenTextYOff = new NumberSetting("Naven Text Y Off", 11.5, 0, 20, 0.5f);
+    private final NumberSetting navenWidthPad = new NumberSetting("Naven Width Pad", 10, 0, 20, 1);
+    private final NumberSetting navenCardH = new NumberSetting("Naven Card Height", 19, 12, 30, 1);
+    private final NumberSetting navenRadius = new NumberSetting("Naven Radius", 6, 0, 10, 0.5f);
+    private final NumberSetting navenSlideMs = new NumberSetting("Naven Slide (ms)", 120, 20, 300, 10);
 
     private final List<NotificationEntry> notifications = new ArrayList<>();
 
@@ -73,7 +79,7 @@ public class NotificationHud extends HudElement {
 
     @Override
     public void registerSettings() {
-        this.registerSetting(margin, duration, maxNotifications, needSound, whichSound, style);
+        this.registerSetting(margin, duration, maxNotifications, needSound, whichSound, style, navenTextXOff, navenTextYOff, navenWidthPad, navenCardH, navenRadius, navenSlideMs);
     }
 
     @EventTarget
@@ -83,14 +89,19 @@ public class NotificationHud extends HudElement {
         }
         loadTextures();
         boolean simple = isSimpleStyle();
+        boolean naven = isNavenStyle();
+        FontRenderer navenFont = FontPresets.openSans(18f);
         String displayText = event.module().getName() + (event.enabled() ? " Enabled" : " Disabled");
-        float width = simple
+        float width = naven
+                ? navenFont.getWidth(displayText) + navenWidthPad.getValue().floatValue()
+                : simple
                 ? SIMPLE_PADDING * 2.0f + SIMPLE_ICON_SIZE + SIMPLE_ICON_GAP
                 + GlHelper.getStringWidth(displayText, FontPresets.pingfang(18.0f)) + 3.0f
                 : SOUTHSIDE_WIDTH;
+        float height = naven ? navenCardH.getValue().floatValue() + 4f : simple ? SIMPLE_HEIGHT : SOUTHSIDE_HEIGHT;
+        float spacing = naven ? 4f : simple ? SIMPLE_SPACING : SOUTHSIDE_SPACING;
         notifications.add(new NotificationEntry(event.module().getName(), event.enabled(), System.currentTimeMillis(),
-                simple, displayText, width, simple ? SIMPLE_HEIGHT : SOUTHSIDE_HEIGHT,
-                simple ? SIMPLE_SPACING : SOUTHSIDE_SPACING));
+                simple || naven, displayText, width, height, spacing));
         while (notifications.size() > maxNotifications.getValue().intValue()) {
             notifications.remove(0);
         }
@@ -117,8 +128,8 @@ public class NotificationHud extends HudElement {
         float screenW = mc.getWindow().getGuiScaledWidth();
         float screenH = mc.getWindow().getGuiScaledHeight();
         float marginVal = margin.getValue().floatValue();
-        this.setWidth(isSimpleStyle() ? 0.0f : SOUTHSIDE_WIDTH);
-        this.setHeight(isSimpleStyle() ? SIMPLE_HEIGHT : SOUTHSIDE_HEIGHT);
+        this.setWidth(isSimpleStyle() || isNavenStyle() ? 0.0f : SOUTHSIDE_WIDTH);
+        this.setHeight(isNavenStyle() ? navenCardH.getValue().floatValue() + 4f : isSimpleStyle() ? SIMPLE_HEIGHT : SOUTHSIDE_HEIGHT);
 
         Iterator<NotificationEntry> it = notifications.iterator();
         while (it.hasNext()) {
@@ -134,7 +145,8 @@ public class NotificationHud extends HudElement {
                     entry.x = offscreenX;
                 }
                 float entranceElapsed = (now - entry.entranceTime) / 1000f;
-                float t = Math.min(1.0f, entranceElapsed / 0.08f);
+                float slideSec = isNavenStyle() ? navenSlideMs.getValue().floatValue() / 1000f : 0.08f;
+                float t = Math.min(1.0f, entranceElapsed / slideSec);
                 entry.x = offscreenX + (targetX - offscreenX) * t;
                 entry.alpha = Math.min(1.0f, entry.alpha + 0.05f);
             } else if (!entry.exiting) {
@@ -143,7 +155,8 @@ public class NotificationHud extends HudElement {
                 entry.exitStartTime = now;
             } else {
                 float exitElapsed = (now - entry.exitStartTime) / 1000f;
-                float t = Math.min(1.0f, exitElapsed / 0.04f);
+                float exitSec = isNavenStyle() ? navenSlideMs.getValue().floatValue() / 1000f : 0.04f;
+                float t = Math.min(1.0f, exitElapsed / exitSec);
                 entry.x = targetX + (offscreenX - targetX) * t;
                 entry.alpha = 1.0f - t;
                 if (t >= 1.0f) {
@@ -173,8 +186,10 @@ public class NotificationHud extends HudElement {
     }
 
     private void renderCard(DrawContext drawContext, NotificationEntry entry, float x, float y, float progress, float alpha) {
-        if (entry.simple) {
+        if (entry.simple && !isNavenStyle()) {
             renderSimpleCard(drawContext, entry, x, y, alpha);
+        } else if (isNavenStyle()) {
+            renderNavenCard(drawContext, entry, x, y, alpha);
         } else {
             renderSouthsideCard(drawContext, entry, x, y, progress, alpha);
         }
@@ -256,6 +271,24 @@ public class NotificationHud extends HudElement {
 
     private boolean isSimpleStyle() {
         return "simple".equals(style.getValue());
+    }
+
+    private boolean isNavenStyle() {
+        return "naven".equals(style.getValue());
+    }
+
+    private void renderNavenCard(DrawContext drawContext, NotificationEntry entry, float x, float y, float alpha) {
+        int bgColor = entry.enabled ? 0xFF179626 : 0xFF942A2B;
+        float cardW = entry.width;
+        float cardH = navenCardH.getValue().floatValue();
+        float radius = navenRadius.getValue().floatValue();
+        try (Paint paint = new Paint()) {
+            paint.setColor(ColorUtil.withAlpha(bgColor, alpha));
+            drawContext.drawRoundedRect(RoundedRectangle.ofXYWHR(x + 2f, y + 4f, cardW, cardH, radius), paint);
+        }
+        FontRenderer font = FontPresets.openSans(18f);
+        int textColor = ((int)(alpha * 255f) & 0xFF) << 24 | 0x00FFFFFF;
+        GlHelper.drawText(entry.displayText, x + navenTextXOff.getValue().floatValue(), y + navenTextYOff.getValue().floatValue(), font, textColor);
     }
 
     private void loadTextures() {

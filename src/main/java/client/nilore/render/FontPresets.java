@@ -36,6 +36,10 @@ public final class FontPresets {
         return Fonts.getRenderer("MuseoSansCyrl-900.ttf", size);
     }
 
+    public static FontRenderer openSans(float size) {
+        return Fonts.getRenderer("opensans.ttf", size);
+    }
+
     public static FontRenderer materialIcons(float size) {
         return Fonts.getRenderer("MaterialIcons-Regular.ttf", size);
     }

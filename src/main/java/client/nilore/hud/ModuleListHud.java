@@ -164,6 +164,7 @@ public class ModuleListHud extends HudElement {
     private NumberSetting rainbowSaturation;
     private NumberSetting rainbowBrightness;
     private NumberSetting rainbowOffset;
+    private BooleanSetting useMinecraftFont;
 
     // Font glow (fixed)
     private static final boolean FONT_GLOW_ENABLED = true;
@@ -224,6 +225,7 @@ public class ModuleListHud extends HudElement {
         this.rainbowSaturation = new NumberSetting("Rainbow Saturation", 90.0f, 0.0f, 100.0f, 1.0f);
         this.rainbowBrightness = new NumberSetting("Rainbow Brightness", 100.0f, 10.0f, 100.0f, 1.0f);
         this.rainbowOffset = new NumberSetting("Rainbow Offset", 85.0f, 0.0f, 90.0f, 1.0f);
+        this.useMinecraftFont = new BooleanSetting("Minecraft Font", false);
 
         // Register all settings
         this.registerSetting(sideMode, breakEnabled, showSuffix, suffixColorEnabled, suffixLowercaseEnabled,
@@ -231,12 +233,13 @@ public class ModuleListHud extends HudElement {
                 paddingX, paddingY, rowHeight, rowSpacing, backgroundEnabled, backgroundRadius, backgroundAlpha,
                 sideLineEnabled, sideLineMode, sideLineWidth,
                 glowEnabled, glowRadius, glowAlpha,
-                useClientColor, textColorMode, gradientTheme, rainbowSpeed, rainbowSaturation, rainbowBrightness, rainbowOffset);
+                useClientColor, useMinecraftFont, textColorMode, gradientTheme, rainbowSpeed, rainbowSaturation, rainbowBrightness, rainbowOffset);
     }
 
     private List<AnimatedRow> updateRows() {
         FontRenderer font = FontPresets.pingfang(16.0f);
         boolean importantOnly = this.important.getValue();
+        boolean useMcFont = this.useMinecraftFont.getValue();
         for (Module module : NiloreClient.getInstance().getModuleManager().getModules()) {
             if (module == this || module.getName().isEmpty() || module.isHiddenInModuleList()) {
                 this.rowStates.remove(module);
@@ -253,7 +256,9 @@ public class ModuleListHud extends HudElement {
                     this.rowStates.put(module, row);
                 }
                 String displayName = this.displayName(module);
-                float textWidth = GlHelper.getStringWidth(displayName, font);
+                float textWidth = useMcFont
+                        ? mc.font.width(displayName)
+                        : GlHelper.getStringWidth(displayName, font);
                 row.updateMetrics(displayName, textWidth, this.rowWidth(textWidth));
                 row.setTargetVisible(true);
             } else if (row != null) {
@@ -414,7 +419,7 @@ public class ModuleListHud extends HudElement {
         }
         drawContext.save();
         drawContext.clipRoundedRect(bounds, true);
-        this.drawModuleName(layout.row.name, layout.x, layout.y, layout.width, layout.fullHeight,
+        this.drawModuleName(drawContext, layout.row.name, layout.x, layout.y, layout.width, layout.fullHeight,
                 layout.rowIndex, rows.size(), layout.progress, alignment);
         drawContext.restore();
     }
@@ -498,35 +503,55 @@ public class ModuleListHud extends HudElement {
         }
     }
 
-    private void drawModuleName(String text, float rowX, float rowY, float rowWidth, float rowHeight,
+    private void drawModuleName(DrawContext drawContext, String text, float rowX, float rowY, float rowWidth, float rowHeight,
                                 int rowIndex, int rowCount, float alpha, Alignment alignment) {
-        FontRenderer font = FontPresets.pingfang(16.0f);
-        float textWidth = GlHelper.getStringWidth(text, font);
+        boolean useMcFont = this.useMinecraftFont.getValue();
+        float textWidth;
+        float textY;
+        if (useMcFont) {
+            textWidth = mc.font.width(text);
+            textY = rowY + (rowHeight + mc.font.lineHeight) / 2.0f
+                    - 10.0f
+                    + this.paddingY.getValue().floatValue() * 0.25f;
+        } else {
+            FontRenderer font = FontPresets.pingfang(16.0f);
+            textWidth = GlHelper.getStringWidth(text, font);
+            textY = rowY + (rowHeight - (float) GlHelper.getFontAscent(font)) / 2.0f
+                    + this.paddingY.getValue().floatValue() * 0.25f;
+        }
         float padding = this.paddingX.getValue().floatValue();
         float lineReserve = this.sideLineEnabled.getValue() ? this.sideLineWidth.getValue().floatValue() : 0.0f;
         float textX = alignment == Alignment.RIGHT
                 ? rowX + rowWidth - padding - textWidth - (this.resolveLineAlignment(alignment) == Alignment.RIGHT ? lineReserve : 0.0f)
                 : rowX + padding + (this.resolveLineAlignment(alignment) == Alignment.LEFT ? lineReserve : 0.0f);
-        float textY = rowY + (rowHeight - (float) GlHelper.getFontAscent(font)) / 2.0f
-                + this.paddingY.getValue().floatValue() * 0.25f;
         int color = this.colorForPosition(rowIndex, 0.5f, Math.max(1, rowCount - 1));
         int finalColor = Argb.withAlpha(color, alpha);
 
-        if (FONT_GLOW_ENABLED) {
-            int glowAlphaValue = FONT_GLOW_ALPHA;
-            float radius = FONT_GLOW_RADIUS;
-            int quality = FONT_GLOW_QUALITY;
-            if (radius > 0.0f && glowAlphaValue > 0) {
-                int animatedGlowAlpha = Math.round((float) glowAlphaValue * alpha);
-                for (int i = 0; i < quality; i++) {
-                    double angle = Math.PI * 2.0 * (double) i / (double) quality;
-                    float ox = (float) Math.cos(angle) * radius;
-                    float oy = (float) Math.sin(angle) * radius;
-                    GlHelper.drawText(text, textX + ox, textY + oy, font, Argb.withAlpha(color, animatedGlowAlpha / quality));
+        if (useMcFont) {
+            var bufferSource = drawContext.getGuiGraphics().bufferSource();
+            mc.font.drawInBatch(text, textX, textY, finalColor, false,
+                    drawContext.getPoseStack().last().pose(),
+                    bufferSource,
+                    net.minecraft.client.gui.Font.DisplayMode.NORMAL, 0, 0xF000F0);
+            bufferSource.endBatch();
+        } else {
+            FontRenderer font = FontPresets.pingfang(16.0f);
+            if (FONT_GLOW_ENABLED) {
+                int glowAlphaValue = FONT_GLOW_ALPHA;
+                float radius = FONT_GLOW_RADIUS;
+                int quality = FONT_GLOW_QUALITY;
+                if (radius > 0.0f && glowAlphaValue > 0) {
+                    int animatedGlowAlpha = Math.round((float) glowAlphaValue * alpha);
+                    for (int i = 0; i < quality; i++) {
+                        double angle = Math.PI * 2.0 * (double) i / (double) quality;
+                        float ox = (float) Math.cos(angle) * radius;
+                        float oy = (float) Math.sin(angle) * radius;
+                        GlHelper.drawText(text, textX + ox, textY + oy, font, Argb.withAlpha(color, animatedGlowAlpha / quality));
+                    }
                 }
             }
+            GlHelper.drawText(text, textX, textY, font, finalColor);
         }
-        GlHelper.drawText(text, textX, textY, font, finalColor);
     }
 
     public int getThemeColor(int positionIndex, float positionProgress, int maxPositionIndex) {

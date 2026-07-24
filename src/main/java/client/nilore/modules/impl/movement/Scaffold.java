@@ -61,7 +61,7 @@ public class Scaffold extends Module {
     public final BooleanSetting clutch = new BooleanSetting("Clutch", true);
     public final ModeSetting swingMode = new ModeSetting("Swing", "Both", "Server").withDefault("Both");
     public final BooleanSetting blockCounter = new BooleanSetting("Block Counter", true);
-    public final ModeSetting blockCounterStyle = new ModeSetting("Block Counter Style", "Amunix", "Modern").withDefault("Modern");
+    public final ModeSetting blockCounterStyle = new ModeSetting("Block Counter Style", "Amunix", "Modern", "Naven").withDefault("Modern");
     public final BooleanSetting onTickRot = new BooleanSetting("OnTickRot", false);
     public final NumberSetting rotationSpeed = new NumberSetting("Rotation Speed", 180, 0, 360, 5, () -> !this.syncRotSpeed.getValue());
     public final BooleanSetting syncRotSpeed = new BooleanSetting("Sync RotSpeed", false);
@@ -402,10 +402,10 @@ public class Scaffold extends Module {
         this.shelfProgress.update(deltaSec);
         float animProg = Mth.clamp(this.shelfProgress.getValue(), 0.0f, 1.0f);
 
-        if (this.blockCounterStyle.is("Modern")) {
-            this.renderModernShelfHud(event, totalBlocks, animProg);
-        } else {
-            this.renderSimpleShelfHud(event, totalBlocks, animProg);
+        switch (this.blockCounterStyle.getValue()) {
+            case "Modern" -> this.renderModernShelfHud(event, totalBlocks, animProg);
+            case "Amunix" -> this.renderSimpleShelfHud(event, totalBlocks, animProg);
+            case "Naven" -> this.renderNavenBlockHud(event, totalBlocks);
         }
     }
 
@@ -492,6 +492,39 @@ public class Scaffold extends Module {
                 paint.setStrokeCap(Paint.StrokeCap.FILL);
                 paint.setColor(0xFFFFFFFF);
                 drawContext.drawString(blocksStr, textX, textY, shelfBlocksFont, paint);
+            }
+        });
+    }
+
+    private void renderNavenBlockHud(Render2DEvent event, int totalBlocks) {
+        String text = "Blocks: " + totalBlocks;
+        FontRenderer navenFont = FontPresets.openSans(15f);
+        float textWidth = navenFont.getWidth(text);
+        float screenWidth = mc.getWindow().getGuiScaledWidth();
+        float screenHeight = mc.getWindow().getGuiScaledHeight();
+        float boxW = textWidth + 12f;
+        float boxH = 18f;
+        float x = screenWidth / 2f - textWidth / 2f - 5f;
+        float y = screenHeight / 2f + 30f;
+        int bgAlpha = 190;
+        float textYOff = 13f;
+        int bodyColor = (bgAlpha << 24) | 0x000000;
+        int headerColor = (bgAlpha << 24) | 0x962D2D;
+
+        Renderer.render(event.guiGraphics(), drawContext -> {
+            try (Paint paint = new Paint()) {
+                // Dark body
+                paint.setColor(bodyColor);
+                drawContext.drawRoundedRect(RoundedRectangle.ofXYWHR(x, y, boxW, boxH, 5f), paint);
+                // Red header bar
+                drawContext.save();
+                drawContext.clip(Rectangle.ofXYWH(x, y, boxW, 3f));
+                paint.setColor(headerColor);
+                drawContext.drawRoundedRect(RoundedRectangle.ofXYWHR(x, y, boxW, boxH, 5f), paint);
+                drawContext.restore();
+                // Text
+                paint.setColor(0xFFFFFFFF);
+                drawContext.drawString(text, x + 5f, y + textYOff, navenFont, paint);
             }
         });
     }

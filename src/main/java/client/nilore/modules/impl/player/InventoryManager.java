@@ -61,7 +61,7 @@ import client.nilore.utils.misc.PacketUtil;
 import client.nilore.event.EventTarget;
 
 public class InventoryManager
-extends Module {
+        extends Module {
     public static InventoryManager INSTANCE;
     private final NumberSetting actionDelaySetting = new NumberSetting("Delay", 90, 0, 500, 10);
     private final NumberSetting sprintDelayTicksSetting = new NumberSetting("Open Delay", 2, 0, 10, 1);
@@ -71,7 +71,7 @@ extends Module {
     private final ModeSetting offhandItemSetting = new ModeSetting("Offhand Items", "None", "Golden Apple", "Projectile", "Fishing Rod", "Block").withDefault("None");
     private final ModeSetting bowPrioritySetting = new ModeSetting("Bow Priority", "Crossbow", "Power Bow", "Punch Bow").withDefault("Power Bow");
     private final BooleanSetting inventoryOnlySetting = new BooleanSetting("Inventory Only", true);
-    private final BooleanSetting fastThrowSetting = new BooleanSetting("Fast Throw", true);
+    private final BooleanSetting pauseOnKillAura = new BooleanSetting("Pause On KillAura", true);
     private final NumberSetting maxEggsSnowballsSetting = new NumberSetting("Max Eggs & Snowballs Size", 64, 16, 256, 16);
     public final NumberSetting maxBlockSizeSetting = new NumberSetting("Max Block Size", 256, 64, 512, 64);
     public final BooleanSetting functionalBlocksFix = new BooleanSetting("Functional Blocks Fix", true);
@@ -178,6 +178,7 @@ extends Module {
                     return;
                 }
             }
+            if (this.inventoryOnlySetting.getValue()) return;
             if (!(packet instanceof ServerboundContainerClickPacket) && !(packet instanceof ServerboundContainerClosePacket)) return;
             packetEvent.setCancelled(true);
             this.pendingPackets.add((Packet<ServerGamePacketListener>) packet);
@@ -358,9 +359,11 @@ extends Module {
         if (this.blockSlotSetting.getValue().intValue() != 0) {
             int blockSlot = this.blockSlotSetting.getValue().intValue() - 1;
             ItemStack currentBlock = mc.player.getInventory().items.get(blockSlot);
-            ItemStack bestBlock = ItemUtil.getBestBlock();
-            if (!(bestBlock == null || BlockUtil.isPlaceable(currentBlock) || this.offhandItemSetting.getValue().equals("Block") || !this.swapToSlot(blockSlot, bestBlock))) {
-                return true;
+            ItemStack mostBlock = ItemUtil.getMostBlock();
+            if (mostBlock != null && this.offhandItemSetting.getValue().equals("Block")) {
+                // skip, offhand handles blocks
+            } else if (mostBlock != null && (!BlockUtil.isPlaceable(currentBlock) || mostBlock.getCount() > currentBlock.getCount())) {
+                if (this.swapToSlot(blockSlot, mostBlock)) return true;
             }
         }
         if (ItemUtil.countBlocks() > this.maxBlockSizeSetting.getValue().intValue() && this.throwItem(worstBlock = ItemUtil.getWorstBlock())) {
@@ -474,9 +477,8 @@ extends Module {
     }
 
     private boolean handleAutoArmor() {
-        if (!this.autoArmorSetting.getValue()) {
-            return false;
-        }
+        if (!this.autoArmorSetting.getValue()) return false;
+        // Step 1: throw equipped armor if strictly better exists in inventory
         for (int slot = 0; slot < mc.player.getInventory().armor.size(); ++slot) {
             ItemStack armorStack = mc.player.getInventory().armor.get(slot);
             if (!(armorStack.getItem() instanceof ArmorItem armorItem)) continue;
@@ -490,6 +492,7 @@ extends Module {
             actionTimer.reset();
             return true;
         }
+        // Step 2: equip best armor from inventory
         for (int slot = 0; slot < mc.player.getInventory().items.size(); ++slot) {
             ItemStack candidate = mc.player.getInventory().items.get(slot);
             if (candidate.isEmpty() || !(candidate.getItem() instanceof ArmorItem armorItem)) continue;
@@ -505,6 +508,20 @@ extends Module {
             this.didInventoryAction = true;
             actionTimer.reset();
             return true;
+        }
+        // Step 3: throw worse/duplicate armor in inventory
+        for (int slot = 0; slot < mc.player.getInventory().items.size(); ++slot) {
+            ItemStack candidate = mc.player.getInventory().items.get(slot);
+            if (candidate.isEmpty() || !(candidate.getItem() instanceof ArmorItem armorItem)) continue;
+            float score = ItemUtil.getArmorScore(candidate);
+            float equipped = ItemUtil.getEquippedArmorScore(armorItem.getEquipmentSlot());
+            if (score <= equipped) {
+                int tgt = slot < 9 ? slot + 36 : slot;
+                mc.gameMode.handleInventoryMouseClick(mc.player.inventoryMenu.containerId, tgt, 1, ClickType.THROW, mc.player);
+                this.didInventoryAction = true;
+                actionTimer.reset();
+                return true;
+            }
         }
         return false;
     }
@@ -587,20 +604,20 @@ extends Module {
 
     private boolean throwItem(ItemStack itemStack) {
         int slot;
-        if (mc.gameMode == null || mc.player == null) {
-            return false;
+        if (mc.gameMode == null || mc.player == null || itemStack == null || itemStack.isEmpty()) return false;
+        if (!this.throwItemsSetting.getValue()) return false;
+        if (!ItemUtil.isUsable(itemStack)) return false;
+        if (!actionTimer.hasPassed(this.dropDelaySetting.getValue().intValue())) return false;
+        slot = ItemUtil.getSlot(itemStack);
+        if (slot == -1) return false;
+        if (slot < 9) {
+            mc.gameMode.handleInventoryMouseClick(mc.player.inventoryMenu.containerId, slot + 36, 1, ClickType.THROW, mc.player);
+        } else {
+            mc.gameMode.handleInventoryMouseClick(mc.player.inventoryMenu.containerId, slot, 1, ClickType.THROW, mc.player);
         }
-        if (this.throwItemsSetting.getValue() && ItemUtil.isUsable(itemStack) && (actionTimer.hasPassed(this.dropDelaySetting.getValue().intValue()) || this.fastThrowSetting.getValue()) && (slot = ItemUtil.getSlot(itemStack)) != -1) {
-            if (slot < 9) {
-                mc.gameMode.handleInventoryMouseClick(mc.player.inventoryMenu.containerId, slot + 36, 1, ClickType.THROW, mc.player);
-            } else {
-                mc.gameMode.handleInventoryMouseClick(mc.player.inventoryMenu.containerId, slot, 1, ClickType.THROW, mc.player);
-            }
-            this.didInventoryAction = true;
-            actionTimer.reset();
-            return true;
-        }
-        return false;
+        this.didInventoryAction = true;
+        actionTimer.reset();
+        return true;
     }
 
     private boolean swapToSlot(int targetSlot, ItemStack itemStack) {
@@ -730,7 +747,12 @@ extends Module {
 
     private boolean shouldPauseForAction() {
         if (Scaffold.INSTANCE != null && Scaffold.INSTANCE.isEnabled()) return true;
-        if (KillAura.INSTANCE != null && KillAura.INSTANCE.isEnabled() && KillAura.target != null) return true;
+        if (KillAura.INSTANCE != null && KillAura.INSTANCE.isEnabled()) {
+            if (this.pauseOnKillAura.getValue()) {
+                return !(mc.screen instanceof net.minecraft.client.gui.screens.inventory.InventoryScreen);
+            }
+            return KillAura.target != null;
+        }
         return false;
     }
 

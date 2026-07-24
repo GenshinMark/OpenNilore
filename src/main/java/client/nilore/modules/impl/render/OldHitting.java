@@ -12,7 +12,7 @@ import client.nilore.settings.impl.NumberSetting;
 
 public class OldHitting
 extends Module {
-    private final ModeSetting animationModeSetting = new ModeSetting("Animation", "Vanilla", "Leaked", "Slide").withDefault("Vanilla");
+    private final ModeSetting animationModeSetting = new ModeSetting("Animation", "Vanilla", "Leaked", "Slide", "NewPushDown").withDefault("Vanilla");
     private final NumberSetting sizeSetting = new NumberSetting("Size", 1.0, 0.1, 3.0, 0.1);
     private final NumberSetting speedSetting = new NumberSetting("Speed", 1.0, 0.1, 5.0, 0.1);
     private final NumberSetting yOffsetSetting = new NumberSetting("Y-Offset", 0.0, -1.0, 1.0, 0.1);
@@ -82,6 +82,26 @@ extends Module {
             OldHitting.applyRotate(-80.0f, 1.0f, 0.0f, 0.0f, poseStack);
             OldHitting.applyRotate(-slideSwing * 20.0f, 1.0f, 0.0f, 0.0f, poseStack);
             OldHitting.applyScale(1.2f * size, 1.2f * size, 1.2f * size, poseStack);
+            OldHitting.applyScale(size, size, size, poseStack);
+        }
+        if (this.animationModeSetting.getValue().equalsIgnoreCase("newpushdown")) {
+            // hand position offset (defaults: all 0)
+            OldHitting.applyTranslate(-0.08f, 0.12f, 0.0f, poseStack);
+            // var9 = sin(sqrt(progress) * PI)
+            float var9 = Mth.sin(Mth.sqrt(progress) * (float)Math.PI);
+            // transformFirstPersonItem(equipProgress / 1.4f, 0.0f)
+            OldHitting.applyTranslate(0.56f, -0.52f + (equipProgress / 1.4f) * -0.6f, -0.71999997f, poseStack);
+            OldHitting.applyRotate(45.0f, 0.0f, 1.0f, 0.0f, poseStack);
+            OldHitting.applyScale(0.4f, 0.4f, 0.4f, poseStack);
+            // custom swing rotates
+            OldHitting.applyRotate(-var9 * 32.5f, var9 / 2.0f, 1.0f, 4.0f, poseStack);
+            OldHitting.applyRotate(-var9 * 60.0f, 1.0f, var9 / 3.0f, 0.0f, poseStack);
+            // doBlockTransformations()
+            OldHitting.applyTranslate(-0.5f, 0.2f, 0.0f, poseStack);
+            OldHitting.applyRotate(30.0f, 0.0f, 1.0f, 0.0f, poseStack);
+            OldHitting.applyRotate(-80.0f, 1.0f, 0.0f, 0.0f, poseStack);
+            OldHitting.applyRotate(60.0f, 0.0f, 1.0f, 0.0f, poseStack);
+            // size scale
             OldHitting.applyScale(size, size, size, poseStack);
         }
     }

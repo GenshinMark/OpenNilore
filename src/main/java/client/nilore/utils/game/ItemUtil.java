@@ -454,6 +454,10 @@ extends ClientBase {
         return ItemUtil.getAllItems().stream().filter(itemStack -> !itemStack.isEmpty() && itemStack.getItem() instanceof BlockItem && BlockUtil.isPlaceable(itemStack) && ItemUtil.isUsable(itemStack) && !(excludeFunctionalBlocks && isFunctionalBlock(itemStack))).max(Comparator.comparingInt(ItemStack::getCount)).orElse(null);
     }
 
+    public static ItemStack getMostBlock() {
+        return ItemUtil.getAllItems().stream().filter(itemStack -> !itemStack.isEmpty() && itemStack.getItem() instanceof BlockItem && BlockUtil.isPlaceable(itemStack) && !(excludeFunctionalBlocks && isFunctionalBlock(itemStack))).max(Comparator.comparingInt(ItemStack::getCount)).orElse(null);
+    }
+
     public static float getBestPickaxeScore() {
         return ItemUtil.getAllItems().stream().filter(itemStack -> !itemStack.isEmpty() && itemStack.getItem() instanceof PickaxeItem && ItemUtil.isUsable(itemStack)).map(ItemUtil::getDigSpeed).max(Float::compareTo).orElse(0.0f);
     }

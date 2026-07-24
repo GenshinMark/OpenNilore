@@ -115,7 +115,7 @@ public class RotationHandler
                 RotationHandler.setTargetRotation(autoThrow.targetRotation);
             } else if (scaffold != null && scaffold.isEnabled() && scaffold.rots != null) {
                 RotationHandler.setTargetRotation(scaffold.rots);
-            } else if (killAura != null && killAura.isEnabled() && KillAura.target != null && killAura.rotation != null) {
+            } else if (killAura != null && killAura.isEnabled() && KillAura.target != null && killAura.rotation != null && !killAura.style.is("NewFix")) {
                 RotationHandler.setTargetRotation(new Rotation(killAura.rotation.getYaw(), killAura.rotation.getPitch()));
             } else if (antiKB != null && antiKB.isEnabled() && AntiKB.rotation != null) {
                 RotationHandler.setTargetRotation(AntiKB.rotation);

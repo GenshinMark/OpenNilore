@@ -4,7 +4,7 @@ import java.util.HashMap;
 import java.util.Map;
 import java.util.concurrent.atomic.AtomicInteger;
 
-import client.nilore.hud.target.SimpleTargetStyle;
+import client.nilore.hud.target.*;
 import net.minecraft.client.gui.screens.ChatScreen;
 import net.minecraft.client.player.AbstractClientPlayer;
 import net.minecraft.network.protocol.Packet;
@@ -14,9 +14,6 @@ import net.minecraft.world.entity.LivingEntity;
 import client.nilore.event.impl.GlRenderEvent;
 import client.nilore.event.impl.PacketEvent;
 import client.nilore.event.impl.Render2DEvent;
-import client.nilore.hud.target.MoonTargetStyle;
-import client.nilore.hud.target.RoundTargetStyle;
-import client.nilore.hud.target.TargetStyle;
 import client.nilore.modules.impl.combat.KillAura;
 import client.nilore.settings.impl.ModeSetting;
 import client.nilore.utils.animation.SmoothAnimationTimer;
@@ -30,7 +27,7 @@ extends HudElement {
     public static final Map<String, AtomicInteger> playerHealthMap = new HashMap<>();
     private float lastHealth;
     private float healthDelta;
-    private final ModeSetting styleMode = new ModeSetting("Mode", "Round", "Moon","Simple").withDefault("Round");
+    private final ModeSetting styleMode = new ModeSetting("Mode", "Round", "Moon","Simple","Naven").withDefault("Round");
 
     public TargetHud() {
         super("TargetHUD");
@@ -102,7 +99,10 @@ extends HudElement {
             } else if (targetStyle instanceof SimpleTargetStyle){
                 this.setWidth(120.0f);
                 this.setHeight(38.0f);
-            }else {
+            } else if (targetStyle instanceof NavenTargetStyle) {
+                this.setWidth(160.0f);
+                this.setHeight(48.0f);
+            } else {
                 this.setWidth(150.0f);
                 this.setHeight(36.0f);
             }

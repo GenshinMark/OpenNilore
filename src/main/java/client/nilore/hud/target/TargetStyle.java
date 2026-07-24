@@ -28,6 +28,7 @@ extends ClientBase {
         registry.put(RoundTargetStyle.class, new RoundTargetStyle());
         registry.put(MoonTargetStyle.class, new MoonTargetStyle());
         registry.put(SimpleTargetStyle.class, new SimpleTargetStyle());
+        registry.put(NavenTargetStyle.class, new NavenTargetStyle());
     }
 
     public static TargetStyle getByName(String string) {
