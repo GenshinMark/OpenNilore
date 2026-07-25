@@ -51,7 +51,6 @@ import client.nilore.ClientBase;
 import client.nilore.NiloreClient;
 import client.nilore.event.impl.PreMotionEvent;
 import client.nilore.event.impl.RenderEvent;
-import client.nilore.event.impl.SprintEvent;
 import client.nilore.event.impl.TickEvent;
 import client.nilore.event.impl.WorldChangeEvent;
 import client.nilore.hud.ModuleListHud;
@@ -101,18 +100,14 @@ public class KillAura extends Module {
     public final BooleanSetting infSwitch       = new BooleanSetting("Infinity Switch", false);
     public final BooleanSetting preferBaby      = new BooleanSetting("Prefer Baby", false);
     public final BooleanSetting morePart        = new BooleanSetting("More Particles", false);
-    public final ModeSetting style = new ModeSetting("Style", "New", "Old", "NewFix").withDefault("New");
+    public final ModeSetting style = new ModeSetting("Style", "New", "Old", "onTickRot").withDefault("New");
 
-    public final BooleanSetting keepSprint      = new BooleanSetting("Keep Sprint", false,
-            () -> this.style.is("New") || this.style.is("Old"));
-    public final BooleanSetting keepSprintNewFix = new BooleanSetting("Keep Sprint", false,
-            () -> this.style.is("NewFix"));
     public final BooleanSetting fix             = new BooleanSetting("Fix", false,
             () -> this.style.is("Old"));
     public final BooleanSetting overrideRaycast = new BooleanSetting("Override Raycast", true,
-            () -> this.style.is("Old") || this.style.is("NewFix"));
+            () -> this.style.is("Old") || this.style.is("onTickRot"));
     public final BooleanSetting throughWalls    = new BooleanSetting("Through Walls", false,
-            () -> this.style.is("NewFix"));
+            () -> this.style.is("onTickRot"));
     public final BooleanSetting ignoreSkipTicks = new BooleanSetting("Ignore skip ticks", false);
     public final BooleanSetting fakeAutoBlock   = new BooleanSetting("Fake AutoBlock", true);
     public final BooleanSetting test            = new BooleanSetting("Test", false);
@@ -417,23 +412,13 @@ public class KillAura extends Module {
     }
 
     @EventTarget
-    public void onSprint(SprintEvent event) {
-        if (!this.style.is("NewFix") && this.keepSprint.getValue()) {
-            ++this.sprintTickCounter;
-            if (this.sprintTickCounter % 2 == 0 && mc.player != null) {
-                mc.player.setSprinting(false);
-            }
-        }
-    }
-
-    @EventTarget
     public void onTick(TickEvent event) {
         if (!NiloreClient.isReady()) {
             return;
         }
         if (mc.screen instanceof AbstractContainerScreen
                 || ItemUtil.hasServerItem()
-                || (Scaffold.INSTANCE != null && Scaffold.INSTANCE.isEnabled())
+                || (Scaffold.INSTANCE != null && Scaffold.INSTANCE.isEnabled() && !this.style.is("onTickRot"))
                 || (Stuck.INSTANCE != null && Stuck.INSTANCE.isEnabled())
                 || (Helper.INSTANCE != null && Helper.INSTANCE.isEnabled() && Helper.targetRotation != null)
                 || AntiWeb.targetRotation != null
@@ -451,10 +436,6 @@ public class KillAura extends Module {
             this.sprintCounter = 0;
             return;
         }
-        if (this.style.is("NewFix") && (Boolean) this.keepSprintNewFix.getValue()
-                && mc.player.getFoodData().getFoodLevel() > 6) {
-            mc.player.setSprinting(true);
-        }
 
         boolean isSwitch = this.switchSize.getValue().intValue() > 1
                 || this.infSwitch.getValue()
@@ -466,7 +447,7 @@ public class KillAura extends Module {
         if (aimingTarget != null) {
             this.currentBestHit = RotationUtil.getBestHit(aimingTarget);
             if (this.currentBestHit != null && this.currentBestHit.rotation() != null) {
-                if (this.style.is("NewFix")) {
+                if (this.style.is("onTickRot")) {
                     this.rotation = null;
                 } else {
                     Rotation from = RotationHandler.prevRotation != null
@@ -527,10 +508,6 @@ public class KillAura extends Module {
                 apsValue = this.maxAps.getValue().floatValue();
                 minApsValue = this.minAps.getValue().floatValue();
             }
-            if ((Boolean) this.keepSprint.getValue()) {
-                apsValue *= 2.0f;
-                minApsValue *= 2.0f;
-            }
             this.attacks += (float)(MathUtil.randomDouble(minApsValue, apsValue) / 20.0);
         } else {
             float apsValue = this.maxAps.getValue().floatValue();
@@ -541,10 +518,6 @@ public class KillAura extends Module {
                         : 0;
                 apsValue -= kbAttackAmount;
                 minApsValue -= kbAttackAmount;
-            }
-            if (!this.style.is("NewFix") && (Boolean) this.keepSprint.getValue()) {
-                apsValue *= 2.0f;
-                minApsValue *= 2.0f;
             }
             this.attacks += (float)(MathUtil.randomDouble(minApsValue, apsValue) / 20.0);
         }
@@ -582,10 +555,10 @@ public class KillAura extends Module {
             return false;
         }
         if (targetList.isEmpty()) return false;
-        if (this.rotation == null) return false;
+        if (this.rotation == null && !this.style.is("onTickRot")) return false;
 
         HitResult hitResult;
-        if ((this.style.is("Old") || this.style.is("NewFix"))
+        if ((this.style.is("Old") || this.style.is("onTickRot"))
                 && (Boolean) this.overrideRaycast.getValue()
                 && this.currentBestHit != null && this.currentBestHit.rotation() != null) {
             hitResult = RotationUtil.performRaycast(this.currentBestHit.rotation());
@@ -704,7 +677,7 @@ public class KillAura extends Module {
             }
         }
         // Wall check — reject if a block is between player and entity
-        if (this.style.is("NewFix") && !(Boolean) this.throughWalls.getValue()) {
+        if (this.style.is("onTickRot") && !(Boolean) this.throughWalls.getValue()) {
             if (mc.level == null) return false;
             Vec3 eyePos = mc.player.getEyePosition(1.0f);
             Vec3 targetPoint = RotationUtil.closestPoint(eyePos, entity.getBoundingBox());
@@ -756,7 +729,7 @@ public class KillAura extends Module {
         if (mc.player == null || mc.gameMode == null) return false;
         if (this.isWebPlacing()) return false;
 
-        if (this.style.is("NewFix")) {
+        if (this.style.is("onTickRot")) {
             return this.attackEntityNewFix(entity);
         }
 
@@ -765,15 +738,6 @@ public class KillAura extends Module {
         if (RotationHandler.targetRotation != null) {
             mc.player.setYRot(RotationHandler.targetRotation.getYaw());
             mc.player.setXRot(RotationHandler.targetRotation.getPitch());
-        }
-
-        if (!this.style.is("NewFix") && (Boolean) this.keepSprint.getValue()) {
-            boolean canAttackWithSprint = this.sprintTickCounter % 2 == 0;
-            if (!canAttackWithSprint) {
-                mc.player.setYRot(currentYaw);
-                mc.player.setXRot(currentPitch);
-                return false;
-            }
         }
 
         ++this.attackTimes;
@@ -786,10 +750,6 @@ public class KillAura extends Module {
         if (this.morePart.getValue()) {
             mc.player.magicCrit(entity);
             mc.player.crit(entity);
-        }
-
-        if (!this.style.is("NewFix") && (Boolean) this.keepSprint.getValue()) {
-            mc.player.setDeltaMovement(mc.player.getDeltaMovement().multiply(0.6, 1.0, 0.6));
         }
 
         mc.player.setYRot(currentYaw);

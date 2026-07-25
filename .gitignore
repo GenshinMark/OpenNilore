@@ -34,3 +34,5 @@ changes/
 
 # Claude worktrees
 .claude/worktrees/
+.claude/
+/bash.exe.stackdump

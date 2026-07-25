@@ -41,6 +41,7 @@ import client.nilore.modules.impl.movement.NoPush;
 import client.nilore.modules.impl.movement.Scaffold;
 import client.nilore.modules.impl.movement.Sprint;
 import client.nilore.modules.impl.movement.TargetStrafe;
+import client.nilore.modules.impl.movement.KeepSprint;
 import client.nilore.modules.impl.player.AntiTNT;
 import client.nilore.modules.impl.player.AntiVoid;
 import client.nilore.modules.impl.player.AntiWeb;
@@ -105,6 +106,7 @@ public class ModuleManager extends ClientBase {
         this.register(new Scaffold());
         this.register(new Sprint());
         this.register(new TargetStrafe());
+        this.register(new KeepSprint());
 
         this.register(new AntiTNT());
         this.register(new AntiVoid());
