@@ -18,6 +18,9 @@ import net.minecraft.world.inventory.BrewingStandMenu;
 import net.minecraft.world.inventory.ChestMenu;
 import net.minecraft.world.inventory.ClickType;
 import net.minecraft.world.inventory.FurnaceMenu;
+import it.unimi.dsi.fastutil.ints.Int2ObjectMap;
+import it.unimi.dsi.fastutil.ints.Int2ObjectOpenHashMap;
+import net.minecraft.network.protocol.game.ServerboundContainerClickPacket;
 import net.minecraft.world.item.ArmorItem;
 import net.minecraft.world.item.AxeItem;
 import net.minecraft.world.item.BlockItem;
@@ -40,6 +43,7 @@ import client.nilore.modules.Module;
 import client.nilore.modules.impl.combat.KillAura;
 import client.nilore.modules.impl.movement.Scaffold;
 import client.nilore.settings.impl.BooleanSetting;
+import client.nilore.settings.impl.ModeSetting;
 import client.nilore.settings.impl.NumberSetting;
 import client.nilore.utils.animation.Timer;
 import client.nilore.utils.game.BlockUtil;
@@ -65,6 +69,7 @@ extends Module {
     private final BooleanSetting onlyBestSetting = new BooleanSetting("Only Best", true);
     private final BooleanSetting randomClickSetting = new BooleanSetting("Random Click", true);
     private final BooleanSetting smartStealingSetting = new BooleanSetting("Smart Stealing", true);
+    private final ModeSetting clickMode = new ModeSetting("Click Mode", "Windows Click", "Packet").withDefault("Windows Click");
     private static final Timer stealTimer;
     private static final Timer openTimer;
     private final Random random = new Random();
@@ -517,7 +522,14 @@ extends Module {
     private void executePendingClick() {
         if (this.pendingMenu != null && this.pendingSlot >= 0) {
             clickDelayMs = this.clickDelaySetting.getValue().longValue();
-            mc.gameMode.handleInventoryMouseClick(this.pendingMenu.containerId, this.pendingSlot, 0, ClickType.QUICK_MOVE, mc.player);
+            if (clickMode.is("Packet")) {
+                int stateId = mc.player.containerMenu != null ? mc.player.containerMenu.getStateId() : 0;
+                ItemStack carriedItem = mc.player.containerMenu != null ? mc.player.containerMenu.getCarried().copy() : ItemStack.EMPTY;
+                Int2ObjectMap<ItemStack> changedSlots = new Int2ObjectOpenHashMap<>();
+                mc.player.connection.send(new ServerboundContainerClickPacket(this.pendingMenu.containerId, stateId, this.pendingSlot, 0, ClickType.QUICK_MOVE, carriedItem, changedSlots));
+            } else {
+                mc.gameMode.handleInventoryMouseClick(this.pendingMenu.containerId, this.pendingSlot, 0, ClickType.QUICK_MOVE, mc.player);
+            }
             openTimer.reset();
             stealTimer.reset();
             actionTimer.reset();
