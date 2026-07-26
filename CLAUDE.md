@@ -62,7 +62,7 @@ COMBAT, MOVEMENT, PLAYER, RENDER, EXPLOIT, WORLD, MISC
 
 **misc/ (6)**: AimAssist, AutoClicker, AutoRod, KillSay, MusicPlayer, SafeWalk
 
-**movement/ (12)**: CollisionSpeed, FastWeb, FireballBlink, Fly, HighJump, KeepSprint, NoDelay, NoPush, NoSlow, Scaffold, Sprint, TargetStrafe
+**movement/ (11)**: CollisionSpeed, FastWeb, FireballBlink, Fly, HighJump, NoDelay, NoPush, NoSlow, Scaffold, Sprint, TargetStrafe
 
 **player/ (12)**: AntiTNT, AntiVoid, AntiWeb, AutoMLG, AutoWebPlace, ChestStealer, GhostHand, Helper, InventoryManager, MidPearl, NoFall, Stuck
 - `helper/`: HelperBase

@@ -16,6 +16,9 @@ extends Module {
     private final NumberSetting sizeSetting = new NumberSetting("Size", 1.0, 0.1, 3.0, 0.1);
     private final NumberSetting speedSetting = new NumberSetting("Speed", 1.0, 0.1, 5.0, 0.1);
     private final NumberSetting yOffsetSetting = new NumberSetting("Y-Offset", 0.0, -1.0, 1.0, 0.1);
+    private final NumberSetting handPosXSetting = new NumberSetting("Hand-X", 0.0, -1.0, 1.0, 0.01, () -> this.animationModeSetting.is("NewPushDown"));
+    private final NumberSetting handPosYSetting = new NumberSetting("Hand-Y", 0.0, -1.0, 1.0, 0.01, () -> this.animationModeSetting.is("NewPushDown"));
+    private final NumberSetting handPosZSetting = new NumberSetting("Hand-Z", 0.0, -1.0, 1.0, 0.01, () -> this.animationModeSetting.is("NewPushDown"));
     public static OldHitting INSTANCE;
 
     public OldHitting() {
@@ -85,23 +88,26 @@ extends Module {
             OldHitting.applyScale(size, size, size, poseStack);
         }
         if (this.animationModeSetting.getValue().equalsIgnoreCase("newpushdown")) {
-            // hand position offset (defaults: all 0)
-            OldHitting.applyTranslate(-0.08f, 0.12f, 0.0f, poseStack);
+            // hand position offset (handPos* defaults: all 0)
+            double handX = this.handPosXSetting.getValue().doubleValue() - 0.08;
+            double handY = this.handPosYSetting.getValue().doubleValue() + 0.12;
+            double handZ = this.handPosZSetting.getValue().doubleValue();
+            OldHitting.applyTranslate(handX, handY, handZ, poseStack);
             // var9 = sin(sqrt(progress) * PI)
-            float var9 = Mth.sin(Mth.sqrt(progress) * (float)Math.PI);
+            float var9 = Mth.sin(Mth.sqrt(scaledProgress) * (float)Math.PI);
             // transformFirstPersonItem(equipProgress / 1.4f, 0.0f)
             OldHitting.applyTranslate(0.56f, -0.52f + (equipProgress / 1.4f) * -0.6f, -0.71999997f, poseStack);
             OldHitting.applyRotate(45.0f, 0.0f, 1.0f, 0.0f, poseStack);
             OldHitting.applyScale(0.4f, 0.4f, 0.4f, poseStack);
             // custom swing rotates
-            OldHitting.applyRotate(-var9 * 32.5f, var9 / 2.0f, 1.0f, 4.0f, poseStack);
-            OldHitting.applyRotate(-var9 * 60.0f, 1.0f, var9 / 3.0f, 0.0f, poseStack);
+            OldHitting.applyRotate(-var9 * 65.0f / 2.0f, var9 / 2.0f, 1.0f, 4.0f, poseStack);
+            OldHitting.applyRotate(-var9 * 60.0f, 1.0f, var9 / 3.0f, -0.0f, poseStack);
             // doBlockTransformations()
             OldHitting.applyTranslate(-0.5f, 0.2f, 0.0f, poseStack);
             OldHitting.applyRotate(30.0f, 0.0f, 1.0f, 0.0f, poseStack);
             OldHitting.applyRotate(-80.0f, 1.0f, 0.0f, 0.0f, poseStack);
             OldHitting.applyRotate(60.0f, 0.0f, 1.0f, 0.0f, poseStack);
-            // size scale
+            // size scale (upstream: scale(1, 1, 1))
             OldHitting.applyScale(size, size, size, poseStack);
         }
     }
