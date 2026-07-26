@@ -254,7 +254,7 @@ public class MusicPlayerScreen extends Screen {
         float heroH = 138.16f;
         renderDailyMix(ctx, innerX, heroY, innerW, heroH, mouseX, mouseY);
 
-        float cardsTitleY = heroY + heroH + 20;
+        float cardsTitleY = heroY + heroH + 16;
         GlHelper.drawText("Made for you", innerX, cardsTitleY, TITLE_FONT, CREAM);
         String seeAll = "See all";
         float seeAllW = measure(seeAll, BODY_FONT);
@@ -262,8 +262,9 @@ public class MusicPlayerScreen extends Screen {
         clickAreas.add(new ClickArea(innerX + innerW - seeAllW - 8, cardsTitleY - 5, seeAllW + 16, 25,
                 () -> openPage(Page.PLAYLIST)));
 
-        renderRecommendationGrid(ctx, recommendations(), innerX, cardsTitleY + 29.92f, innerW,
-                h - cardsTitleY - 36, mouseX, mouseY);
+        float gridY = cardsTitleY + 26.0f;
+        renderRecommendationGrid(ctx, recommendations(), innerX, gridY, innerW,
+                h - gridY - 14.0f, mouseX, mouseY);
     }
 
     private void renderHeaderActions(DrawContext ctx, float x, float y, float mouseX, float mouseY) {
@@ -332,7 +333,7 @@ public class MusicPlayerScreen extends Screen {
         int columns = Math.max(3, Math.min(5, (int) (w / 130.24f)));
         float gap = 18.48f;
         float cardW = (w - gap * (columns - 1)) / columns;
-        float artSize = Math.min(cardW, Math.max(80.96f, h - 36.96f));
+        float artSize = Math.min(cardW, h - 43.0f);
         int count = Math.min(columns, songs.size());
         for (int i = 0; i < count; i++) {
             SongInfo song = songs.get(i);

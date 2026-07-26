@@ -256,7 +256,7 @@ public class KillAura extends Module {
         float yawDelta = rotation.getYaw() - prevRotation.getYaw();
         float pitchDelta = rotation.getPitch() - prevRotation.getPitch();
         float yaw = prevRotation.getYaw() + (float)(Math.round(yawDelta / divisor) * divisor);
-        float pitch = prevRotation.getPitch() + (float)(Math.round(pitchDelta / divisor) * divisor);
+        float pitch = Mth.clamp(prevRotation.getPitch() + (float)(Math.round(pitchDelta / divisor) * divisor), -90.0f, 90.0f);
         return new Rotation(yaw, pitch);
     }
 
@@ -861,7 +861,10 @@ public class KillAura extends Module {
     }
 
     private static double getAngleDiffToTarget(Entity entity) {
-        return RotationUtil.angleDiff(RotationHandler.targetRotation.getYaw(), RotationUtil.entityRotation(entity).getYaw());
+        float baseYaw = RotationHandler.targetRotation != null
+                ? RotationHandler.targetRotation.getYaw()
+                : mc.player.getYRot();
+        return RotationUtil.angleDiff(baseYaw, RotationUtil.entityRotation(entity).getYaw());
     }
 
     private static double getDistanceToPlayer(Entity entity) {

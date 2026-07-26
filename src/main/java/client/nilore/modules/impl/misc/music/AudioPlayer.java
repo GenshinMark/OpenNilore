@@ -124,18 +124,6 @@ public class AudioPlayer {
         seekTargetMs = targetMs;
     }
 
-    private void applySeek(long targetMs, AudioFormat format, SourceDataLine line) {
-        int bytesPerFrame = format.getFrameSize();
-        int sampleRate = (int) format.getSampleRate();
-        if (bytesPerFrame <= 0 || sampleRate <= 0) return;
-        long bytesToSkip = (long) (targetMs / 1000.0 * sampleRate * bytesPerFrame);
-        // Drain what's already written so the line plays from the new position
-        line.drain();
-        line.flush();
-        // We can't skip in the current stream, so signal restart
-        // playInternal will handle it via seekTargetMs
-    }
-
     public void prevSongFallback() {
         SongInfo song = currentSong;
         if (song == null) return;
@@ -281,7 +269,8 @@ public class AudioPlayer {
             long initialSeek = seekTargetMs;
             if (initialSeek >= 0) {
                 seekTargetMs = -1;
-                long bytesToSkip = (long) (initialSeek / 1000.0 * sampleRate * bytesPerFrame);
+                // 先取整数帧数再乘帧大小，保证跳过量是帧对齐的，否则 16-bit 采样错位会产生噪音
+                long bytesToSkip = (long) (initialSeek / 1000.0 * sampleRate) * bytesPerFrame;
                 byte[] skipBuffer = new byte[8192];
                 while (bytesConsumedFromStream < bytesToSkip) {
                     long remaining = bytesToSkip - bytesConsumedFromStream;
@@ -317,7 +306,7 @@ public class AudioPlayer {
                 long seek = seekTargetMs;
                 if (seek >= 0) {
                     seekTargetMs = -1;
-                    long absoluteTargetBytes = (long) (seek / 1000.0 * sampleRate * bytesPerFrame);
+                    long absoluteTargetBytes = (long) (seek / 1000.0 * sampleRate) * bytesPerFrame;
                     long relativeSkip = absoluteTargetBytes - bytesConsumedFromStream;
 
                     localLine.stop();

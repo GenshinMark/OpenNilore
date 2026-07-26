@@ -206,7 +206,7 @@ extends ClientBase {
     public static float angleDiff(float angleA, float angleB) {
         float diff = Math.abs(angleA - angleB) % 360.0f;
         if (diff > 180.0f) {
-            diff = 0.0f;
+            diff = 360.0f - diff;
         }
         return diff;
     }
@@ -272,7 +272,7 @@ extends ClientBase {
         double maxZ = aABB.maxZ;
         double step = 0.1;
         OrderedHashSet<Vec3> samplePoints = new OrderedHashSet<>();
-        samplePoints.add(new Vec3(minX + maxX / 2.0, minY + maxY / 2.0, minZ + maxZ / 2.0));
+        samplePoints.add(new Vec3((minX + maxX) / 2.0, (minY + maxY) / 2.0, (minZ + maxZ) / 2.0));
         samplePoints.add(RotationUtil.closestPoint(eyePos, aABB));
         for (sampleAxis1 = minX; sampleAxis1 <= maxX; sampleAxis1 += step) {
             for (sampleAxis2 = minY; sampleAxis2 <= maxY; sampleAxis2 += step) {
@@ -300,11 +300,15 @@ extends ClientBase {
             }
             if ((hitResult = RotationUtil.performRaycast(rotation)) == null) {
                 logger.error("NULL2????");
+                continue;
             }
             if (!RotationUtil.isHitValid(eyePos, hitResult, entity)) continue;
             try {
+                Rotation prevRotation = RotationHandler.prevRotation != null
+                        ? RotationHandler.prevRotation
+                        : new Rotation(mc.player.getYRot(), mc.player.getXRot());
                 Vec3 hitLocation = hitResult.getLocation();
-                return new RotationUtil.BestHitInfo(eyePos, hitLocation, hitLocation.distanceTo(eyePos), RotationUtil.getSensitivitySnappedRotation(rotation.getYaw(), rotation.getPitch(), RotationHandler.prevRotation.yaw, RotationHandler.prevRotation.pitch));
+                return new RotationUtil.BestHitInfo(eyePos, hitLocation, hitLocation.distanceTo(eyePos), RotationUtil.getSensitivitySnappedRotation(rotation.getYaw(), rotation.getPitch(), prevRotation.yaw, prevRotation.pitch));
             } catch (Exception exception) {
                 logger.error("er here");
                 logger.error(exception);
