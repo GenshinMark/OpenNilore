@@ -261,11 +261,17 @@ extends HudElement {
 
             if (entry.visible) {
                 entry.visible = false;
+                entry.fadeAnim.setCurrentValue(currentY);
                 entry.show(entryHeight);
             }
+            entry.fadeAnim.animate(currentY, 0.15, Easings.EASE_OUT_SINE);
+            float entryY = entry.fadeAnim.getValueF();
 
             float animHeight = entry.heightAnim.getValueF();
-            if (animHeight <= 0.01f) continue;
+            if (animHeight <= 0.01f) {
+                currentY += entryHeight + spacing;
+                continue;
+            }
 
             int effectColor = this.getEffectColor(entry.effectInstance.getEffect());
 
@@ -291,7 +297,7 @@ extends HudElement {
                     200
             );
             this.backgroundPaint.setColor(trackColor);
-            drawContext.drawRoundedRect(RoundedRectangle.ofXYWHR(x, currentY, totalWidth, entryHeight, cornerRadius), this.backgroundPaint);
+            drawContext.drawRoundedRect(RoundedRectangle.ofXYWHR(x, entryY, totalWidth, entryHeight, cornerRadius), this.backgroundPaint);
 
             // 进度条填充（取药水颜色，按剩余时长比例）
             int fillColor = ColorUtil.fromARGB(
@@ -303,12 +309,12 @@ extends HudElement {
             float fillWidth = totalWidth * durationPct;
             if (fillWidth > 0.0f) {
                 this.effectIconPaint.setColor(fillColor);
-                drawContext.drawRoundedRect(RoundedRectangle.ofXYWHR(x, currentY, fillWidth, entryHeight, cornerRadius), this.effectIconPaint);
+                drawContext.drawRoundedRect(RoundedRectangle.ofXYWHR(x, entryY, fillWidth, entryHeight, cornerRadius), this.effectIconPaint);
             }
 
             // 药水图标精灵
             float iconX = x + padding;
-            float iconY = currentY + (entryHeight - iconSize) / 2.0f - 1.0f;
+            float iconY = entryY + (entryHeight - iconSize) / 2.0f - 1.0f;
             TextureAtlasSprite sprite = mc.getMobEffectTextures().get(entry.getEffect());
             if (sprite != null) {
                 drawContext.getGuiGraphics().blit((int)iconX, (int)iconY, 0, (int)iconSize, (int)iconSize, sprite);
@@ -316,7 +322,7 @@ extends HudElement {
 
             // 药水名称（白色，18f，上方）
             float textX = x + padding + iconSize + padding;
-            float nameY = currentY + padding + 1.0f;
+            float nameY = entryY + padding + 1.0f;
             this.timerBarPaint.setColor(ColorUtil.fromARGB(255, 255, 255, (int)(255.0f * animHeight)));
             GlHelper.drawTextFormatted(entry.effectName, textX, nameY, this.rhythmNameFont, this.timerBarPaint, false);
 

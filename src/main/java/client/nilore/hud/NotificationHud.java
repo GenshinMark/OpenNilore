@@ -27,6 +27,7 @@ import client.nilore.render.FontRenderer;
 import client.nilore.render.Fonts;
 import client.nilore.render.GlHelper;
 import client.nilore.render.Paint;
+import client.nilore.render.Rectangle;
 import client.nilore.render.Renderer;
 import client.nilore.render.RoundedRectangle;
 import client.nilore.settings.impl.NumberSetting;
@@ -71,7 +72,7 @@ public class NotificationHud extends HudElement {
     private final NumberSetting maxNotifications = new NumberSetting("Max Notifications", 7, 1, 10, 1);
     private final BooleanSetting needSound = new BooleanSetting("Sound", true);
     private final ModeSetting whichSound = new ModeSetting("Type", "Sigma", "Lever").withDefault("Lever");
-    private final ModeSetting style = new ModeSetting("Style", "southside", "simple", "naven", "akarin").withDefault("southside");
+    private final ModeSetting style = new ModeSetting("Style", "Southside", "Simple", "Naven", "Akarin").withDefault("Southside");
     private final NumberSetting navenTextXOff = new NumberSetting("Naven Text X Off", 7, 0, 20, 0.5f);
     private final NumberSetting navenTextYOff = new NumberSetting("Naven Text Y Off", 11.5, 0, 20, 0.5f);
     private final NumberSetting navenWidthPad = new NumberSetting("Naven Width Pad", 10, 0, 20, 1);
@@ -89,6 +90,12 @@ public class NotificationHud extends HudElement {
         this.setWidth(SOUTHSIDE_WIDTH);
         this.setHeight(SOUTHSIDE_HEIGHT);
         this.setEnabled(true);
+        navenTextXOff.setVisibility(() -> style.is("Naven"));
+        navenTextYOff.setVisibility(() -> style.is("Naven"));
+        navenWidthPad.setVisibility(() -> style.is("Naven"));
+        navenCardH.setVisibility(() -> style.is("Naven"));
+        navenRadius.setVisibility(() -> style.is("Naven"));
+        navenSlideMs.setVisibility(() -> style.is("Naven"));
     }
 
     @Override
@@ -103,9 +110,9 @@ public class NotificationHud extends HudElement {
         }
         loadTextures();
         String entryStyle = style.getValue();
-        boolean simple = "simple".equals(entryStyle);
-        boolean naven = "naven".equals(entryStyle);
-        boolean akarin = "akarin".equals(entryStyle);
+        boolean simple = "Simple".equals(entryStyle);
+        boolean naven = "Naven".equals(entryStyle);
+        boolean akarin = "Akarin".equals(entryStyle);
         FontRenderer navenFont = FontPresets.openSans(18f);
         String displayText = akarin
                 ? (event.enabled() ? "Enabled " : "Disabled ") + event.module().getName()
@@ -167,7 +174,7 @@ public class NotificationHud extends HudElement {
                     entry.x = offscreenX;
                 }
                 float entranceElapsed = (now - entry.entranceTime) / 1000f;
-                float slideSec = "naven".equals(entry.style) ? navenSlideMs.getValue().floatValue() / 1000f : 0.08f;
+                float slideSec = "Naven".equals(entry.style) ? navenSlideMs.getValue().floatValue() / 1000f : 0.08f;
                 float t = Math.min(1.0f, entranceElapsed / slideSec);
                 entry.x = offscreenX + (targetX - offscreenX) * t;
                 entry.alpha = Math.min(1.0f, entry.alpha + 0.05f);
@@ -177,7 +184,7 @@ public class NotificationHud extends HudElement {
                 entry.exitStartTime = now;
             } else {
                 float exitElapsed = (now - entry.exitStartTime) / 1000f;
-                float exitSec = "naven".equals(entry.style) ? navenSlideMs.getValue().floatValue() / 1000f : 0.04f;
+                float exitSec = "Naven".equals(entry.style) ? navenSlideMs.getValue().floatValue() / 1000f : 0.04f;
                 float t = Math.min(1.0f, exitElapsed / exitSec);
                 entry.x = targetX + (offscreenX - targetX) * t;
                 entry.alpha = 1.0f - t;
@@ -198,7 +205,7 @@ public class NotificationHud extends HudElement {
                 nextY = cardY - entry.spacing;
                 long elapsed = now - entry.time;
                 float progress = entry.exiting ? entry.lastBarProgress
-                        : 1.0f - Mth.clamp((float) elapsed / dur, 0.0f, 1.0f);
+                        : Mth.clamp((float) elapsed / dur, 0.0f, 1.0f);
                 if (!entry.exiting) {
                     entry.lastBarProgress = progress;
                 }
@@ -209,33 +216,39 @@ public class NotificationHud extends HudElement {
 
     private void renderCard(DrawContext drawContext, NotificationEntry entry, float x, float y, float progress, float alpha) {
         switch (entry.style) {
-            case "simple" -> renderSimpleCard(drawContext, entry, x, y, alpha);
-            case "naven" -> renderNavenCard(drawContext, entry, x, y, alpha);
-            case "akarin" -> renderAkarinCard(drawContext, entry, x, y, alpha);
+            case "Simple" -> renderSimpleCard(drawContext, entry, x, y, alpha);
+            case "Naven" -> renderNavenCard(drawContext, entry, x, y, alpha);
+            case "Akarin" -> renderAkarinCard(drawContext, entry, x, y, alpha);
             default -> renderSouthsideCard(drawContext, entry, x, y, progress, alpha);
         }
     }
 
     private void renderSouthsideCard(DrawContext drawContext, NotificationEntry entry,
                                      float x, float y, float progress, float alpha) {
-        try (Paint paint = new Paint()) {
-            paint.setColor(ColorUtil.withAlpha(BG_COLOR, alpha));
-            drawContext.drawRoundedRect(RoundedRectangle.ofXYWHRadii(x, y, entry.width, entry.height - 2f,
-                    new float[]{SOUTHSIDE_RADIUS, SOUTHSIDE_RADIUS, 0, 0}), paint);
-        }
-
         float barY = y + entry.height - SOUTHSIDE_BAR_HEIGHT;
-        try (Paint paint = new Paint()) {
-            paint.setColor(ColorUtil.withAlpha(BAR_BG_COLOR, alpha));
-            drawContext.drawRoundedRect(RoundedRectangle.ofXYWHRadii(x, barY, entry.width, SOUTHSIDE_BAR_HEIGHT,
-                    new float[]{0, 0, SOUTHSIDE_RADIUS, SOUTHSIDE_RADIUS}), paint);
-        }
+        float barH = SOUTHSIDE_BAR_HEIGHT;
         float barWidth = entry.width * progress;
-        if (barWidth > 0.5f) {
-            try (Paint paint = new Paint()) {
+        float[] radii = new float[]{SOUTHSIDE_RADIUS, SOUTHSIDE_RADIUS, SOUTHSIDE_RADIUS, SOUTHSIDE_RADIUS};
+
+        try (Paint paint = new Paint()) {
+            // 1) Full card in dark (base layer)
+            paint.setColor(ColorUtil.withAlpha(BG_COLOR, alpha));
+            drawContext.drawRoundedRect(RoundedRectangle.ofXYWHRadii(x, y, entry.width, entry.height, radii), paint);
+
+            // 2) Clip to bar area, draw same full rect in gray
+            drawContext.save();
+            drawContext.clip(Rectangle.ofXYWH(x, barY + 1, entry.width, barH - 1));
+            paint.setColor(ColorUtil.withAlpha(BAR_BG_COLOR, alpha));
+            drawContext.drawRoundedRect(RoundedRectangle.ofXYWHRadii(x, y, entry.width, entry.height, radii), paint);
+            drawContext.restore();
+
+            // 3) Clip to progress width, draw same full rect in white
+            if (barWidth > 0.5f) {
+                drawContext.save();
+                drawContext.clip(Rectangle.ofXYWH(x, barY + 1, barWidth, barH - 1));
                 paint.setColor(ColorUtil.withAlpha(BAR_COLOR, alpha));
-                drawContext.drawRoundedRect(RoundedRectangle.ofXYWHRadii(x, barY, barWidth, SOUTHSIDE_BAR_HEIGHT,
-                        new float[]{0, 0, SOUTHSIDE_RADIUS, SOUTHSIDE_RADIUS}), paint);
+                drawContext.drawRoundedRect(RoundedRectangle.ofXYWHRadii(x, y, entry.width, entry.height, radii), paint);
+                drawContext.restore();
             }
         }
 
@@ -339,15 +352,15 @@ public class NotificationHud extends HudElement {
     }
 
     private boolean isSimpleStyle() {
-        return "simple".equals(style.getValue());
+        return "Simple".equals(style.getValue());
     }
 
     private boolean isNavenStyle() {
-        return "naven".equals(style.getValue());
+        return "Naven".equals(style.getValue());
     }
 
     private boolean isAkarinStyle() {
-        return "akarin".equals(style.getValue());
+        return "Akarin".equals(style.getValue());
     }
 
     private void renderNavenCard(DrawContext drawContext, NotificationEntry entry, float x, float y, float alpha) {

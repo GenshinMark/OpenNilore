@@ -5,24 +5,17 @@ import java.util.Collections;
 import java.util.HashSet;
 import java.util.Iterator;
 import java.util.List;
-import java.util.Queue;
-import java.util.concurrent.ConcurrentLinkedQueue;
 import java.util.stream.Collectors;
 import java.util.stream.IntStream;
-import net.minecraft.client.gui.screens.Screen;
 import net.minecraft.client.gui.screens.inventory.AbstractContainerScreen;
 import net.minecraft.client.gui.screens.inventory.ContainerScreen;
 import net.minecraft.client.gui.screens.inventory.InventoryScreen;
 import net.minecraft.network.chat.Component;
 import net.minecraft.network.protocol.Packet;
-import net.minecraft.network.protocol.game.ServerGamePacketListener;
-import net.minecraft.network.protocol.game.ServerboundContainerClickPacket;
 import net.minecraft.network.protocol.game.ServerboundContainerClosePacket;
 import net.minecraft.network.protocol.game.ServerboundInteractPacket;
 import net.minecraft.network.protocol.game.ServerboundMovePlayerPacket;
 import net.minecraft.network.protocol.game.ServerboundPlayerActionPacket;
-import net.minecraft.network.protocol.game.ServerboundPlayerCommandPacket;
-import net.minecraft.network.protocol.game.ServerboundPlayerInputPacket;
 import net.minecraft.network.protocol.game.ServerboundUseItemOnPacket;
 import net.minecraft.network.protocol.game.ServerboundUseItemPacket;
 import net.minecraft.world.inventory.AbstractContainerMenu;
@@ -57,7 +50,6 @@ import client.nilore.utils.animation.Timer;
 import client.nilore.utils.game.BlockUtil;
 import client.nilore.utils.game.ItemUtil;
 import client.nilore.utils.game.MovementUtil;
-import client.nilore.utils.misc.PacketUtil;
 import client.nilore.event.EventTarget;
 
 public class InventoryManager
@@ -91,14 +83,10 @@ public class InventoryManager
     private static final Timer actionTimer;
     private boolean didInventoryAction = false;
     private boolean pendingOffhandPlace = false;
-    private int idleTicks = 0;
+    private int noMoveTicks = 0;
     private int sprintWaitTicks = 0;
     public static boolean isPerformingAction;
-    private boolean wasSprinting = false;
     private boolean skipNextTick = false;
-    private boolean justClosedInventory = false;
-    private final Queue<Packet<ServerGamePacketListener>> pendingPackets = new ConcurrentLinkedQueue<>();
-    private int sprintDelayTicks = 0;
 
     public InventoryManager() {
         super("InventoryManager", Category.PLAYER, 66);
@@ -107,17 +95,14 @@ public class InventoryManager
 
     @Override
     protected void onDisable() {
-        this.sprintDelayTicks = 0;
         isPerformingAction = false;
         this.skipNextTick = false;
-        this.justClosedInventory = false;
-        this.wasSprinting = false;
         super.onDisable();
     }
 
     @EventTarget
     public void onSprint(SprintEvent sprintEvent) {
-        if (!this.inventoryOnlySetting.getValue() && (!this.pendingPackets.isEmpty() || isPerformingAction) && mc.player != null) {
+        if (!this.inventoryOnlySetting.getValue() && isPerformingAction && mc.player != null) {
             mc.options.keySprint.setDown(false);
             mc.player.setSprinting(false);
         }
@@ -149,66 +134,6 @@ public class InventoryManager
                     || packetEvent.getPacket() instanceof ServerboundPlayerActionPacket) {
                 mc.getConnection().send(new ServerboundContainerClosePacket(mc.player.inventoryMenu.containerId));
                 return;
-            }
-        }
-        {
-            Screen screen;
-            AbstractContainerScreen containerScreen;
-            ServerboundPlayerCommandPacket commandPacket;
-            boolean hasPendingPackets = !this.pendingPackets.isEmpty();
-            if (packet instanceof ServerboundPlayerCommandPacket) {
-                commandPacket = (ServerboundPlayerCommandPacket)packet;
-                if (commandPacket.getAction() == ServerboundPlayerCommandPacket.Action.START_SPRINTING) {
-                    this.wasSprinting = true;
-                } else if (commandPacket.getAction() == ServerboundPlayerCommandPacket.Action.STOP_SPRINTING) {
-                    this.wasSprinting = false;
-                }
-            }
-            if (isPerformingAction && packet instanceof ServerboundPlayerInputPacket inputPacket) {
-                if (mc.player.isSprinting()) {
-                    mc.player.setSprinting(false);
-                    packetEvent.setCancelled(true);
-                    PacketUtil.sendQueued(new ServerboundPlayerInputPacket(inputPacket.getXxa(), inputPacket.getZza(), inputPacket.isJumping(), inputPacket.isShiftKeyDown()));
-                    return;
-                }
-            }
-            if ((screen = mc.screen) instanceof AbstractContainerScreen) {
-                containerScreen = (AbstractContainerScreen)screen;
-                if (containerScreen.getMenu().containerId != mc.player.inventoryMenu.containerId) {
-                    return;
-                }
-            }
-            if (this.inventoryOnlySetting.getValue()) return;
-            if (!(packet instanceof ServerboundContainerClickPacket) && !(packet instanceof ServerboundContainerClosePacket)) return;
-            packetEvent.setCancelled(true);
-            this.pendingPackets.add((Packet<ServerGamePacketListener>) packet);
-        }
-    }
-
-    @EventTarget
-    public void onMotion(MotionEvent motionEvent) {
-        if (motionEvent.isPost() && !this.inventoryOnlySetting.getValue() && mc.player != null) {
-            boolean hasPendingPackets = !this.pendingPackets.isEmpty();
-            if (hasPendingPackets) {
-                if (this.wasSprinting || mc.player.isSprinting()) {
-                    this.skipNextTick = true;
-                    this.sprintDelayTicks = 2 + this.sprintDelayTicksSetting.getValue().intValue();
-                    return;
-                }
-                if (this.sprintDelayTicks > 0) {
-                    --this.sprintDelayTicks;
-                    return;
-                }
-                while (!this.pendingPackets.isEmpty()) {
-                    PacketUtil.sendQueued((Packet<ServerGamePacketListener>) this.pendingPackets.poll());
-                }
-                PacketUtil.sendQueued(new ServerboundContainerClosePacket(mc.player.inventoryMenu.containerId));
-                this.justClosedInventory = true;
-            } else {
-                this.sprintDelayTicks = 0;
-                if (this.justClosedInventory) {
-                    this.justClosedInventory = false;
-                }
             }
         }
     }
@@ -270,7 +195,7 @@ public class InventoryManager
                 return;
             }
 
-            this.idleTicks = MovementUtil.isInputActive() ? 0 : ++this.idleTicks;
+            this.noMoveTicks = MovementUtil.isInputActive() ? 0 : this.noMoveTicks + 1;
             boolean isContainerOpen = false;
             AbstractContainerMenu containerMenu = mc.player.containerMenu;
             Object screen = mc.screen;
@@ -288,7 +213,7 @@ public class InventoryManager
             if (containerMenu instanceof FurnaceMenu || containerMenu instanceof BrewingStandMenu) {
                 isContainerOpen = true;
             }
-            if (isContainerOpen || ChestStealer.isRateLimited() || Scaffold.INSTANCE.isEnabled() || (this.inventoryOnlySetting.getValue() != false ? !(mc.screen instanceof InventoryScreen) : false)) {
+            if (isContainerOpen || ChestStealer.isRateLimited() || Scaffold.INSTANCE.isEnabled() || (this.inventoryOnlySetting.getValue() ? !(mc.screen instanceof InventoryScreen) : this.noMoveTicks <= 1)) {
                 this.pendingOffhandPlace = false;
                 this.sprintWaitTicks = 0;
                 isPerformingAction = false;

@@ -15,6 +15,7 @@ import net.minecraft.world.phys.BlockHitResult;
 import net.minecraft.world.phys.HitResult;
 import net.minecraft.world.phys.Vec3;
 import net.minecraft.world.scores.Team;
+import net.minecraft.util.Mth;
 import client.nilore.event.impl.SprintEvent;
 import client.nilore.event.impl.TickEvent;
 import client.nilore.modules.Category;
@@ -24,7 +25,6 @@ import client.nilore.modules.impl.player.Stuck;
 import client.nilore.settings.impl.NumberSetting;
 import client.nilore.utils.animation.Timer;
 import client.nilore.utils.game.PlayerUtil;
-import client.nilore.utils.game.RotationUtil;
 import client.nilore.utils.rotation.Rotation;
 import client.nilore.utils.rotation.RotationHandler;
 import client.nilore.event.EventTarget;
@@ -136,32 +136,42 @@ extends Module {
     }
 
     private Rotation calculateThrowRotation(Entity entity) {
-        float pitch;
-        float projectileSpeed = 1.5f;
-        float gravity = 0.03f;
-        double predictX = entity.getX();
-        double predictY = entity.getY() + (double)entity.getBbHeight() * 0.8;
-        double predictZ = entity.getZ();
-        double velX = entity.getX() - entity.xOld;
-        double velY = entity.getY() - entity.yOld;
-        double velZ = entity.getZ() - entity.zOld;
-        for (int i = 0; i < 3; ++i) {
-            double dx = predictX - mc.player.getX();
-            double dy = predictY - (mc.player.getY() + (double)mc.player.getEyeHeight(mc.player.getPose()));
-            double dz = predictZ - mc.player.getZ();
-            double horizDist = Math.sqrt(dx * dx + dz * dz);
-            float travelTicks = (float)(horizDist / (double)(projectileSpeed * 0.4f));
-            predictX = entity.getX() + velX * (double)travelTicks;
-            predictY = entity.getY() + (double)entity.getBbHeight() * 0.8 + velY * (double)travelTicks;
-            predictZ = entity.getZ() + velZ * (double)travelTicks;
+        Vec3 velocity = entity.getDeltaMovement();
+        double targetX = entity.getX();
+        double targetY = entity.getY() + entity.getBbHeight() * 0.6;
+        double targetZ = entity.getZ();
+
+        double time = 0.0;
+        for (int i = 0; i < 3; i++) {
+            double predictedX = targetX + velocity.x * time;
+            double predictedZ = targetZ + velocity.z * time;
+            double dx = predictedX - mc.player.getX();
+            double dz = predictedZ - mc.player.getZ();
+            time = Math.sqrt(dx * dx + dz * dz) / 0.6;
         }
-        double dx = predictX - mc.player.getX();
-        double dy = predictY - (mc.player.getY() + (double)mc.player.getEyeHeight(mc.player.getPose()));
-        double dz = predictZ - mc.player.getZ();
+
+        double predictedX = targetX + velocity.x * time;
+        double predictedY = targetY + velocity.y * 0.3 * time;
+        double predictedZ = targetZ + velocity.z * time;
+
+        double dx = predictedX - mc.player.getX();
+        double dy = predictedY - (mc.player.getY() + mc.player.getEyeHeight(mc.player.getPose()));
+        double dz = predictedZ - mc.player.getZ();
         double horizDist = Math.sqrt(dx * dx + dz * dz);
-        float yaw = (float)(Math.atan2(dz, dx) * 180.0 / Math.PI) - 90.0f;
-        pitch = -RotationUtil.ballisticPitch((float)horizDist, (float)dy, projectileSpeed, gravity);
+
+        float yaw = (float) Math.toDegrees(Math.atan2(dz, dx)) - 90.0f;
+        float pitch = -getLowArcPitch((float) horizDist, (float) dy, 0.6f, 0.006f);
+        pitch = Mth.clamp(pitch, -90.0f, 90.0f);
         return new Rotation(yaw, pitch);
+    }
+
+    private float getLowArcPitch(float distance, float height, float velocity, float gravity) {
+        float velocitySq = velocity * velocity;
+        float root = velocitySq * velocitySq - gravity * (gravity * distance * distance + 2.0f * height * velocitySq);
+        if (root <= 0.0f) {
+            return (float) Math.toDegrees(Math.atan2(height, distance));
+        }
+        return (float) Math.toDegrees(Math.atan((velocitySq - (float) Math.sqrt(root)) / (gravity * distance)));
     }
 
     private Optional<? extends Player> findTarget() {
