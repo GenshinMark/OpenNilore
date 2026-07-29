@@ -516,6 +516,8 @@ extends Module {
             this.pendingSlot = slot;
             this.hasPendingClick = true;
             this.ticksSinceMenu = 0;
+            this.executePendingClick();
+            this.resetState();
         }
     }
 

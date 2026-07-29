@@ -138,7 +138,7 @@ extends Module {
     private Rotation calculateThrowRotation(Entity entity) {
         Vec3 velocity = entity.getDeltaMovement();
         double targetX = entity.getX();
-        double targetY = entity.getY() + entity.getBbHeight() * 0.6;
+        double targetY = entity.getY() + entity.getBbHeight() * 0.55;
         double targetZ = entity.getZ();
 
         double time = 0.0;
@@ -151,7 +151,7 @@ extends Module {
         }
 
         double predictedX = targetX + velocity.x * time;
-        double predictedY = targetY + velocity.y * 0.3 * time;
+        double predictedY = targetY + velocity.y * time;
         double predictedZ = targetZ + velocity.z * time;
 
         double dx = predictedX - mc.player.getX();

@@ -11,13 +11,13 @@ import net.minecraft.client.gui.screens.inventory.AbstractContainerScreen;
 import net.minecraft.client.gui.screens.inventory.ContainerScreen;
 import net.minecraft.client.gui.screens.inventory.InventoryScreen;
 import net.minecraft.network.chat.Component;
-import net.minecraft.network.protocol.Packet;
 import net.minecraft.network.protocol.game.ServerboundContainerClosePacket;
 import net.minecraft.network.protocol.game.ServerboundInteractPacket;
 import net.minecraft.network.protocol.game.ServerboundMovePlayerPacket;
 import net.minecraft.network.protocol.game.ServerboundPlayerActionPacket;
 import net.minecraft.network.protocol.game.ServerboundUseItemOnPacket;
 import net.minecraft.network.protocol.game.ServerboundUseItemPacket;
+import net.minecraft.network.protocol.game.ServerboundPlayerCommandPacket;
 import net.minecraft.world.inventory.AbstractContainerMenu;
 import net.minecraft.world.inventory.BrewingStandMenu;
 import net.minecraft.world.inventory.ChestMenu;
@@ -63,6 +63,7 @@ public class InventoryManager
     private final ModeSetting offhandItemSetting = new ModeSetting("Offhand Items", "None", "Golden Apple", "Projectile", "Fishing Rod", "Block").withDefault("None");
     private final ModeSetting bowPrioritySetting = new ModeSetting("Bow Priority", "Crossbow", "Power Bow", "Punch Bow").withDefault("Power Bow");
     private final BooleanSetting inventoryOnlySetting = new BooleanSetting("Inventory Only", true);
+    private final BooleanSetting noMoveSetting = new BooleanSetting("No Move", true, () -> !this.inventoryOnlySetting.getValue());
     private final BooleanSetting pauseOnKillAura = new BooleanSetting("Pause On KillAura", true);
     private final NumberSetting maxEggsSnowballsSetting = new NumberSetting("Max Eggs & Snowballs Size", 64, 16, 256, 16);
     public final NumberSetting maxBlockSizeSetting = new NumberSetting("Max Block Size", 256, 64, 512, 64);
@@ -81,12 +82,14 @@ public class InventoryManager
     private final NumberSetting slimeBallSlotSetting = new NumberSetting("Slime Ball Slot", 0, 0, 9, 1);
     private final NumberSetting crystalSlotSetting = new NumberSetting("Crystal Slot", 0, 0, 9, 1);
     private static final Timer actionTimer;
-    private boolean didInventoryAction = false;
+    private boolean inventoryOpen = false;
     private boolean pendingOffhandPlace = false;
     private int noMoveTicks = 0;
     private int sprintWaitTicks = 0;
     public static boolean isPerformingAction;
     private boolean skipNextTick = false;
+    private boolean silentNoSprintWasSprinting = false;
+    private boolean silentNoSprintWasKeySprintDown = false;
 
     public InventoryManager() {
         super("InventoryManager", Category.PLAYER, 66);
@@ -95,14 +98,16 @@ public class InventoryManager
 
     @Override
     protected void onDisable() {
+        this.inventoryOpen = false;
         isPerformingAction = false;
         this.skipNextTick = false;
+        this.releaseSilentSprint();
         super.onDisable();
     }
 
     @EventTarget
     public void onSprint(SprintEvent sprintEvent) {
-        if (!this.inventoryOnlySetting.getValue() && isPerformingAction && mc.player != null) {
+        if (!this.inventoryOnlySetting.getValue() && this.inventoryOpen && mc.player != null) {
             mc.options.keySprint.setDown(false);
             mc.player.setSprinting(false);
         }
@@ -114,15 +119,14 @@ public class InventoryManager
      */
     @EventTarget
     public void onPacket(PacketEvent packetEvent) {
-        Packet<?> packet = packetEvent.getPacket();
-        if (!packetEvent.isIncomingRaw()) return;
+        if (packetEvent.isIncomingRaw()) return;
         if (mc.player == null) return;
         if (mc.getConnection() == null) return;
         if (packetEvent.getPacket() instanceof ServerboundContainerClosePacket) {
-            this.didInventoryAction = false;
+            this.inventoryOpen = false;
             this.sprintWaitTicks = 0;
         }
-        if (isPerformingAction && !this.inventoryOnlySetting.getValue()) {
+        if (this.inventoryOpen && !this.inventoryOnlySetting.getValue()) {
             if (packetEvent.getPacket() instanceof ServerboundMovePlayerPacket) {
                 if (!MovementUtil.isInputActive()) return;
                 mc.getConnection().send(new ServerboundContainerClosePacket(mc.player.inventoryMenu.containerId));
@@ -175,23 +179,29 @@ public class InventoryManager
             ItemUtil.excludeFunctionalBlocks = this.functionalBlocksFix.getValue();
             ContainerScreen containerScreen;
             if (!this.validateSlotConfig()) {
+                this.inventoryOpen = false;
                 isPerformingAction = false;
                 this.setEnabled(false);
                 this.skipNextTick = true;
+                this.releaseSilentSprint();
                 return;
             }
             if (ItemUtil.hasServerItem()) {
+                this.inventoryOpen = false;
                 isPerformingAction = false;
                 this.skipNextTick = true;
+                this.releaseSilentSprint();
                 return;
             }
 
             // Scaffold 或 KillAura 正在执行动作时，不整理、不停止疾跑
             if (this.shouldPauseForAction()) {
+                this.inventoryOpen = false;
                 isPerformingAction = false;
                 this.skipNextTick = true;
                 this.pendingOffhandPlace = false;
                 this.sprintWaitTicks = 0;
+                this.releaseSilentSprint();
                 return;
             }
 
@@ -213,11 +223,13 @@ public class InventoryManager
             if (containerMenu instanceof FurnaceMenu || containerMenu instanceof BrewingStandMenu) {
                 isContainerOpen = true;
             }
-            if (isContainerOpen || ChestStealer.isRateLimited() || Scaffold.INSTANCE.isEnabled() || (this.inventoryOnlySetting.getValue() ? !(mc.screen instanceof InventoryScreen) : this.noMoveTicks <= 1)) {
+            if (isContainerOpen || ChestStealer.isRateLimited() || Scaffold.INSTANCE.isEnabled() || (this.inventoryOnlySetting.getValue() ? !(mc.screen instanceof InventoryScreen) : (this.noMoveSetting.getValue() ? this.noMoveTicks <= 1 : false))) {
                 this.pendingOffhandPlace = false;
                 this.sprintWaitTicks = 0;
+                this.inventoryOpen = false;
                 isPerformingAction = false;
                 this.skipNextTick = true;
+                this.releaseSilentSprint();
                 return;
             }
             screen = mc.screen;
@@ -233,10 +245,13 @@ public class InventoryManager
                 }
             }
             if (this.performInventoryAction()) {
+                this.inventoryOpen = true;
                 isPerformingAction = true;
             } else {
+                this.inventoryOpen = false;
                 isPerformingAction = false;
                 this.skipNextTick = true;
+                this.releaseSilentSprint();
             }
         }
     }
@@ -245,6 +260,9 @@ public class InventoryManager
      * Enabled aggressive block sorting
      */
     private boolean performInventoryAction() {
+        if (!this.inventoryOnlySetting.getValue()) {
+            this.stopSilentSprint();
+        }
         Integer dropSlot;
         ItemStack dropStack;
         ItemStack worstProjectile;
@@ -256,7 +274,7 @@ public class InventoryManager
         }
         if (this.pendingOffhandPlace && actionTimer.hasPassed(this.actionDelaySetting.getValue().intValue())) {
             mc.gameMode.handleInventoryMouseClick(mc.player.inventoryMenu.containerId, 45, 0, ClickType.PICKUP, mc.player);
-            this.didInventoryAction = true;
+            this.inventoryOpen = true;
             this.pendingOffhandPlace = false;
             actionTimer.reset();
         }
@@ -413,7 +431,7 @@ public class InventoryManager
                 continue;
             }
             mc.gameMode.handleInventoryMouseClick(mc.player.inventoryMenu.containerId, 4 + (4 - slot), 1, ClickType.THROW, mc.player);
-            this.didInventoryAction = true;
+            this.inventoryOpen = true;
             actionTimer.reset();
             return true;
         }
@@ -430,7 +448,7 @@ public class InventoryManager
             }
             int targetSlot = slot < 9 ? slot + 36 : slot;
             mc.gameMode.handleInventoryMouseClick(mc.player.inventoryMenu.containerId, targetSlot, 0, ClickType.QUICK_MOVE, mc.player);
-            this.didInventoryAction = true;
+            this.inventoryOpen = true;
             actionTimer.reset();
             return true;
         }
@@ -443,7 +461,7 @@ public class InventoryManager
             if (score <= equipped) {
                 int tgt = slot < 9 ? slot + 36 : slot;
                 mc.gameMode.handleInventoryMouseClick(mc.player.inventoryMenu.containerId, tgt, 1, ClickType.THROW, mc.player);
-                this.didInventoryAction = true;
+                this.inventoryOpen = true;
                 actionTimer.reset();
                 return true;
             }
@@ -467,7 +485,7 @@ public class InventoryManager
         }
         int targetSlot = slot < 9 ? slot + 36 : slot;
         mc.gameMode.handleInventoryMouseClick(mc.player.inventoryMenu.containerId, targetSlot, 0, ClickType.PICKUP, mc.player);
-        this.didInventoryAction = true;
+        this.inventoryOpen = true;
         this.pendingOffhandPlace = true;
         actionTimer.reset();
         return true;
@@ -523,7 +541,7 @@ public class InventoryManager
         } else {
             mc.gameMode.handleInventoryMouseClick(mc.player.inventoryMenu.containerId, slot, 40, ClickType.SWAP, mc.player);
         }
-        this.didInventoryAction = true;
+        this.inventoryOpen = true;
         actionTimer.reset();
     }
 
@@ -540,7 +558,7 @@ public class InventoryManager
         } else {
             mc.gameMode.handleInventoryMouseClick(mc.player.inventoryMenu.containerId, slot, 1, ClickType.THROW, mc.player);
         }
-        this.didInventoryAction = true;
+        this.inventoryOpen = true;
         actionTimer.reset();
         return true;
     }
@@ -557,7 +575,7 @@ public class InventoryManager
             } else {
                 mc.gameMode.handleInventoryMouseClick(mc.player.inventoryMenu.containerId, sourceSlot, targetSlot, ClickType.SWAP, mc.player);
             }
-            this.didInventoryAction = true;
+            this.inventoryOpen = true;
             actionTimer.reset();
             return true;
         }
@@ -577,7 +595,7 @@ public class InventoryManager
                 } else {
                     mc.gameMode.handleInventoryMouseClick(mc.player.inventoryMenu.containerId, sourceSlot, targetSlot, ClickType.SWAP, mc.player);
                 }
-                this.didInventoryAction = true;
+                this.inventoryOpen = true;
                 actionTimer.reset();
                 return true;
             }
@@ -679,6 +697,47 @@ public class InventoryManager
             return KillAura.target != null;
         }
         return false;
+    }
+
+    private void stopSilentSprint() {
+        if (mc.player == null) return;
+        if (!this.silentNoSprintWasSprinting && !this.silentNoSprintWasKeySprintDown) {
+            this.silentNoSprintWasSprinting = mc.player.isSprinting();
+            this.silentNoSprintWasKeySprintDown = mc.options.keySprint.isDown();
+        }
+        mc.options.keySprint.setDown(false);
+        if (mc.player.isSprinting()) {
+            if (mc.getConnection() != null) {
+                mc.getConnection().send(new ServerboundPlayerCommandPacket(mc.player, ServerboundPlayerCommandPacket.Action.STOP_SPRINTING));
+            }
+            mc.player.setSprinting(false);
+        }
+    }
+
+    private void releaseSilentSprint() {
+        if (mc.player == null) {
+            this.silentNoSprintWasSprinting = false;
+            this.silentNoSprintWasKeySprintDown = false;
+            return;
+        }
+        if (this.silentNoSprintWasKeySprintDown) {
+            mc.options.keySprint.setDown(true);
+        }
+        if (this.silentNoSprintWasSprinting && this.canResumeSprint()) {
+            mc.player.setSprinting(true);
+        }
+        this.silentNoSprintWasSprinting = false;
+        this.silentNoSprintWasKeySprintDown = false;
+    }
+
+    private boolean canResumeSprint() {
+        return mc.player != null
+                && MovementUtil.isInputActive()
+                && mc.player.getHealth() > 0.0f
+                && !mc.player.isInWater()
+                && !mc.player.isInLava()
+                && !mc.player.isShiftKeyDown()
+                && !mc.player.isPassenger();
     }
 
     static {

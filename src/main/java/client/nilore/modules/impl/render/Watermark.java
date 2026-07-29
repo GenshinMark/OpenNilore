@@ -23,10 +23,10 @@ import net.minecraft.client.multiplayer.PlayerInfo;
 
 public class Watermark extends Module {
     final ModeSetting styleSetting = new ModeSetting("Style", "Neverlose", "DynamicIsland", "Simple", "Pharos", "Logo").withDefault("DynamicIsland");
-    private final NumberSetting bgAlpha = new NumberSetting("BG Alpha", 160, 0, 255, 1);
-    private final BooleanSetting glow = new BooleanSetting("Glow", false);
-    private final NumberSetting glowRadius = new NumberSetting("Glow Radius", 12, 4, 40, 1);
-    private final NumberSetting glowAlpha = new NumberSetting("Glow Alpha", 120, 0, 255, 1);
+    private final NumberSetting bgAlpha = new NumberSetting("BG Alpha", 160, 0, 255, 1, () -> this.styleSetting.is("Simple"));
+    private final BooleanSetting glow = new BooleanSetting("Glow", false, () -> this.styleSetting.is("Simple"));
+    private final NumberSetting glowRadius = new NumberSetting("Glow Radius", 12, 4, 40, 1, () -> this.styleSetting.is("Simple") && this.glow.getValue());
+    private final NumberSetting glowAlpha = new NumberSetting("Glow Alpha", 120, 0, 255, 1, () -> this.styleSetting.is("Simple") && this.glow.getValue());
     private final DynamicIsland dynamicIsland = new DynamicIsland();
     private final LogoWatermark logoWatermark = new LogoWatermark();
     private final NeverloseWatermark neverloseWatermark = new NeverloseWatermark();

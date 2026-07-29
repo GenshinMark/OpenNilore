@@ -16,7 +16,6 @@ import net.minecraft.world.item.BlockItem;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.level.block.AirBlock;
 import net.minecraft.world.level.block.state.BlockState;
-import net.minecraft.world.phys.AABB;
 import net.minecraft.world.phys.BlockHitResult;
 import net.minecraft.world.phys.Vec3;
 import client.nilore.ClientBase;
@@ -39,7 +38,7 @@ import client.nilore.settings.impl.BooleanSetting;
 import client.nilore.settings.impl.ModeSetting;
 import client.nilore.settings.impl.NumberSetting;
 import client.nilore.utils.game.BlockUtil;
-import client.nilore.utils.game.FallingPlayer;
+import client.nilore.utils.game.MotionSimulator;
 import client.nilore.utils.game.MovementUtil;
 import client.nilore.utils.game.RayTraceUtil;
 import client.nilore.utils.game.RotationUtil;
@@ -67,7 +66,6 @@ public class Scaffold extends Module {
     public final BooleanSetting syncRotSpeed = new BooleanSetting("Sync RotSpeed", false);
     public final NumberSetting turnSpeed = new NumberSetting("Turn Speed", 75, 0, 360, 5, this.syncRotSpeed::getValue);
     public final NumberSetting returnSpeed = new NumberSetting("Return Speed", 120, 0, 360, 5, this.syncRotSpeed::getValue);
-    public final NumberSetting predictTicks = new NumberSetting("Predict Ticks", 2, 1, 3, 1);
     public final ModeSetting switchMode = new ModeSetting("Switch Mode", "Normal", "Hotbar", "Full").withDefault("Hotbar");
     public final BooleanSetting print_log = new BooleanSetting("Log",false);
 
@@ -247,29 +245,11 @@ public class Scaffold extends Module {
         }
         this.canBuildNow = true;
         if (this.currentPlacement != null && placeableSlot != -1) {
-            if (this.clutch.getValue()) {
-                FallingPlayer fallingPlayer = new FallingPlayer(mc.player);
-                fallingPlayer.calculate(this.predictTicks.getValue().intValue());
-                Vec3 nextEyePos = fallingPlayer.getEyePosition();
-                fallingPlayer.calculate(this.predictTicks.getValue().intValue());
-
-                Vec3 blockCenter = Vec3.atCenterOf(this.currentPlacement.position);
-                double distance = nextEyePos.distanceTo(blockCenter);
-                if (distance >= 5.0 || this.currentPlacement.position.getY() > fallingPlayer.getY()) {
+            if (this.clutch.getValue() && mc.player.getDeltaMovement().y < -0.1) {
+                MotionSimulator sim = new MotionSimulator(mc.player);
+                sim.simulateWithFriction(2);
+                if (this.currentPlacement.position.getY() > sim.y) {
                     this.canBuildNow = false;
-
-                    AABB box = new AABB(
-                            this.currentPlacement.position.getX(),
-                            this.currentPlacement.position.getY() - 1,
-                            this.currentPlacement.position.getZ(),
-                            this.currentPlacement.position.getX() + 1,
-                            this.currentPlacement.position.getY() + 1,
-                            this.currentPlacement.position.getZ() + 1
-                    );
-                    if (this.currentPlacement.position.getY() > fallingPlayer.getY()
-                            && !box.contains(mc.player.position())) {
-                        this.targetYLevel = mc.player.getBlockY() - 1;
-                    }
                 }
             }
         }
@@ -691,10 +671,10 @@ public class Scaffold extends Module {
         if (!this.canBuildNow) {
             eye = mc.player.getEyePosition().add(mc.player.getDeltaMovement().multiply(2.0, 2.0, 2.0));
         }
-        if (this.clutch.getValue()) {
-            FallingPlayer fallingPlayer = new FallingPlayer(mc.player);
-            fallingPlayer.calculate(this.predictTicks.getValue().intValue() * 2);
-            eye = new Vec3(eye.x, Math.max(fallingPlayer.getY() + mc.player.getEyeHeight(), eye.y), eye.z);
+        if (this.clutch.getValue() && mc.player.getDeltaMovement().y < 0.01) {
+            MotionSimulator sim = new MotionSimulator(mc.player);
+            sim.simulateWithFriction(2);
+            eye = new Vec3(eye.x, Math.max(sim.y + mc.player.getEyeHeight(), eye.y), eye.z);
         }
         BlockPos belowFeet = BlockPos.containing(eye.x, this.targetYLevel + 0.1f, eye.z);
         int feetX = belowFeet.getX();
