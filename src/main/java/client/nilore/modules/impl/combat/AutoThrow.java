@@ -151,11 +151,10 @@ extends Module {
         }
 
         double predictedX = targetX + velocity.x * time;
-        double predictedY = targetY + velocity.y * time;
         double predictedZ = targetZ + velocity.z * time;
 
         double dx = predictedX - mc.player.getX();
-        double dy = predictedY - (mc.player.getY() + mc.player.getEyeHeight(mc.player.getPose()));
+        double dy = targetY - (mc.player.getY() + mc.player.getEyeHeight(mc.player.getPose()));
         double dz = predictedZ - mc.player.getZ();
         double horizDist = Math.sqrt(dx * dx + dz * dz);
 
