@@ -5,6 +5,7 @@ import client.nilore.event.impl.GlRenderEvent;
 import client.nilore.event.impl.Render2DEvent;
 import client.nilore.hud.DynamicIsland;
 import client.nilore.hud.LogoWatermark;
+import client.nilore.hud.ModuleListHud;
 import client.nilore.hud.NeverloseWatermark;
 import client.nilore.modules.Category;
 import client.nilore.modules.Module;
@@ -19,10 +20,13 @@ import client.nilore.settings.impl.ModeSetting;
 import client.nilore.settings.impl.NumberSetting;
 import client.nilore.event.EventTarget;
 import client.nilore.utils.render.RenderUtil;
+import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.client.multiplayer.PlayerInfo;
 
 public class Watermark extends Module {
-    final ModeSetting styleSetting = new ModeSetting("Style", "Neverlose", "DynamicIsland", "Simple", "Pharos", "Logo").withDefault("DynamicIsland");
+    final ModeSetting styleSetting = new ModeSetting("Style", "Neverlose", "DynamicIsland", "Simple", "Pharos", "Exhibition", "Logo").withDefault("DynamicIsland");
+    private final BooleanSetting showFpsSetting = new BooleanSetting("Show FPS", true, () -> this.styleSetting.is("Exhibition"));
+    private final BooleanSetting showMsSetting = new BooleanSetting("Show MS", true, () -> this.styleSetting.is("Exhibition"));
     private final NumberSetting bgAlpha = new NumberSetting("BG Alpha", 160, 0, 255, 1, () -> this.styleSetting.is("Simple"));
     private final BooleanSetting glow = new BooleanSetting("Glow", false, () -> this.styleSetting.is("Simple"));
     private final NumberSetting glowRadius = new NumberSetting("Glow Radius", 12, 4, 40, 1, () -> this.styleSetting.is("Simple") && this.glow.getValue());
@@ -60,6 +64,9 @@ public class Watermark extends Module {
                 break;
             case "DynamicIsland":
                 this.dynamicIsland.onRender2D(render2DEvent);
+                break;
+            case "Exhibition":
+                this.renderExhibition(render2DEvent);
                 break;
         }
     }
@@ -162,6 +169,75 @@ public class Watermark extends Module {
         float fpsX = baseX + padX;
         float fpsY = titleY + titleFont.getMetrics().capHeight() - 7.0f + fpsFont.getMetrics().capHeight();
         ctx.drawString(fpsStr, fpsX, fpsY, fpsFont, fpsPaint);
+    }
+
+    // Exhibition style: top-left "Nilore [11fps][1ms]" using the vanilla font.
+    // "Nilore" is drawn per-character with a left→right gradient, the
+    // [fps][ms] brackets are grey.
+    private void renderExhibition(Render2DEvent event) {
+        if (mc.player == null) return;
+        GuiGraphics gui = event.guiGraphics();
+
+        ModuleListHud moduleList = NiloreClient.getInstance().getHudManager() != null
+                ? NiloreClient.getInstance().getHudManager().getHudElement(ModuleListHud.class)
+                : null;
+
+        String name = NiloreClient.CLIENT_NAME;
+        String fpsText = mc.getFps() + "fps";
+        String pingText = getPing() + "ms";
+
+        int x = (int) MARGIN;
+        int y = (int) MARGIN;
+        // "Nilore" — each char takes its own ModuleList theme color (the same
+        // per-row gradient the ModuleList uses), so the name shows a clear
+        // left→right gradient instead of a lerp between two nearby colors.
+        int cursor = x;
+        int len = name.length();
+        for (int i = 0; i < len; i++) {
+            String ch = String.valueOf(name.charAt(i));
+            float t = len <= 1 ? 0.0f : i / (float) (len - 1);
+            int color = moduleList != null
+                    ? moduleList.getThemeColor(i, t, len - 1)
+                    : this.lerpColor(0xFFFF8A00, 0xFFFF4EC5, t);
+            gui.drawString(mc.font, ch, cursor, y, color);
+            cursor += mc.font.width(ch);
+        }
+        // "[110fps][1ms]" — brackets grey, numbers/units white
+        int bracketColor = 0xFF9E9E9E;
+        int contentColor = 0xFFFFFFFF;
+        gui.drawString(mc.font, " ", cursor, y, bracketColor);
+        cursor += mc.font.width(" ");
+        boolean showFps = this.showFpsSetting.getValue();
+        boolean showMs = this.showMsSetting.getValue();
+        if (showFps) {
+            gui.drawString(mc.font, "[", cursor, y, bracketColor);
+            cursor += mc.font.width("[");
+            gui.drawString(mc.font, fpsText, cursor, y, contentColor);
+            cursor += mc.font.width(fpsText);
+        }
+        if (showFps && showMs) {
+            gui.drawString(mc.font, "][", cursor, y, bracketColor);
+            cursor += mc.font.width("][");
+        } else if (showFps) {
+            gui.drawString(mc.font, "]", cursor, y, bracketColor);
+        }
+        if (showMs) {
+            if (!showFps) {
+                gui.drawString(mc.font, "[", cursor, y, bracketColor);
+                cursor += mc.font.width("[");
+            }
+            gui.drawString(mc.font, pingText, cursor, y, contentColor);
+            cursor += mc.font.width(pingText);
+            gui.drawString(mc.font, "]", cursor, y, bracketColor);
+        }
+    }
+
+    private int lerpColor(int from, int to, float t) {
+        int a = (int) ((from >>> 24 & 0xFF) + ((to >>> 24 & 0xFF) - (from >>> 24 & 0xFF)) * t);
+        int r = (int) ((from >> 16 & 0xFF) + ((to >> 16 & 0xFF) - (from >> 16 & 0xFF)) * t);
+        int g = (int) ((from >> 8 & 0xFF) + ((to >> 8 & 0xFF) - (from >> 8 & 0xFF)) * t);
+        int b = (int) ((from & 0xFF) + ((to & 0xFF) - (from & 0xFF)) * t);
+        return a << 24 | r << 16 | g << 8 | b;
     }
 
     private int getPing() {

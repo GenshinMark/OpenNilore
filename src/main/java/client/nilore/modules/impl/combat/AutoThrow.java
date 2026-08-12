@@ -34,7 +34,7 @@ extends Module {
     public static AutoThrow INSTANCE;
     private final NumberSetting minDistance = new NumberSetting("Min Distance", 5, 3, 30, 1);
     private final NumberSetting maxDistance = new NumberSetting("Max Distance", 10, 3, 30, 1);
-    private final NumberSetting throwDelay = new NumberSetting("Delay", 500, 50, 2000, 50);
+    private final NumberSetting throwDelay = new NumberSetting("Delay", 400, 50, 2000, 50);
     private final Timer throwTimer = new Timer();
     public Rotation targetRotation;
     public int ticksUntilThrow;

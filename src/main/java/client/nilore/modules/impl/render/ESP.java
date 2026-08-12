@@ -4,7 +4,6 @@ import com.mojang.blaze3d.systems.RenderSystem;
 import com.mojang.blaze3d.vertex.BufferBuilder;
 import com.mojang.blaze3d.vertex.BufferUploader;
 import com.mojang.blaze3d.vertex.DefaultVertexFormat;
-import com.mojang.blaze3d.vertex.PoseStack;
 import com.mojang.blaze3d.vertex.Tesselator;
 import com.mojang.blaze3d.vertex.VertexFormat;
 import java.awt.Color;
@@ -49,14 +48,12 @@ public class ESP extends Module {
         }
 
     private final ModeSetting modeSetting = new ModeSetting("Mode", "Glow", "Outlined 2D").withDefault("Glow");
-    private final BooleanSetting skeletonSetting = new BooleanSetting("Skeleton", false);
     private final BooleanSetting playersSetting = new BooleanSetting("Players", true);
     private final BooleanSetting mobsSetting = new BooleanSetting("Mobs", false);
     private final BooleanSetting animalsSetting = new BooleanSetting("Animals", false);
     private final BooleanSetting itemsSetting = new BooleanSetting("Items", false);
     private final BooleanSetting arrowsSetting = new BooleanSetting("Arrows", true);
     private final Map<Entity, Pair<Vector4d, Boolean>> entityBoxPositions = new HashMap<>();
-    private final Map<Entity, float[][]> playerBoneRotations = new HashMap<>();
     private final BooleanSetting showHealthBarSetting = new BooleanSetting("Show Health Bar", true);
     private final ModeSetting healthBarPositionSetting = new ModeSetting("Health Bar Position", "Bottom", "Top", "Left", "Right").withDefault("Left");
     private final List<Entity> visibleEntities = new ArrayList<>();
@@ -86,7 +83,6 @@ public class ESP extends Module {
     @Override
     protected void onDisable() {
         this.entityBoxPositions.clear();
-        this.playerBoneRotations.clear();
         this.visibleEntities.clear();
         super.onDisable();
     }
@@ -220,10 +216,6 @@ public class ESP extends Module {
         } else {
             RenderUtil.drawQuad(builder, matrix4f, barX, barY, barX + barW * healthFrac, barY + barH, healthColor);
         }
-    }
-
-    private void renderSkeleton(PoseStack poseStack, float partial) {
-        // Skeleton rendering omitted (heavy obfuscated code); enable Glow mode instead.
     }
 
     private Color getHealthColor(float fraction) {

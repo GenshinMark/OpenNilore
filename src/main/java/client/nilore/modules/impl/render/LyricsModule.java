@@ -35,7 +35,7 @@ public class LyricsModule extends Module {
     private int warmupIndex = 0;
     private static final int WARMUP_BATCH_SIZE = 1;
 
-    private final NumberSetting yOffset = new NumberSetting("Y Offset", 90, -200, 200, 1);
+    private final NumberSetting yOffset = new NumberSetting("Y Offset", 100, -200, 200, 1);
 
     private static final float PANEL_H = 130;
     private static final float LINE_SPACING = 22;

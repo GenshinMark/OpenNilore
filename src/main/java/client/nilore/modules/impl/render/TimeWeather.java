@@ -18,7 +18,7 @@ public class TimeWeather extends Module {
             () -> timeMode.is("Custom"));
 
     private final ModeSetting weatherMode = new ModeSetting("Weather", "Clear", "Rain", "Thunder", "Vanilla")
-            .withDefault("Vanilla");
+            .withDefault("Clear");
 
     public TimeWeather() {
         super("TimeWeather", Category.RENDER);

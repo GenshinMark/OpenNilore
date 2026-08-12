@@ -21,9 +21,9 @@ import client.nilore.utils.misc.UnsafeUtil;
 import client.nilore.event.EventTarget;
 
 public class AutoClicker extends Module {
-    private final NumberSetting cps = new NumberSetting("CPS", 7, 4, 25, 1);
+    private final NumberSetting cps = new NumberSetting("CPS", 12, 4, 25, 1);
     private final ModeSetting clickSide = new ModeSetting("Mode", "Left", "Right", "Both").withDefault("Left");
-    private final ModeSetting clickMethod = new ModeSetting("Click Mode", "Method", "Key", "Mouse").withDefault("Key");
+    private final ModeSetting clickMethod = new ModeSetting("Click Mode", "Method", "Key", "Mouse").withDefault("Mouse");
     private final ModeSetting cpsMode = new ModeSetting("CPS Mode", "Normal", "DBC").withDefault("Normal");
     private final BooleanSetting breakBlock = new BooleanSetting("Break Block", true);
     private final Timer leftClickTimer = new Timer();

@@ -13,7 +13,7 @@ public class MusicPlayer extends Module {
 
     private boolean internalVolumeChange = false;
 
-    private final NumberSetting volume = new NumberSetting("Volume", 80, 0, 100, 1) {
+    private final NumberSetting volume = new NumberSetting("Volume", 90, 0, 100, 1) {
         @Override
         public void onChanged(Number oldValue, Number newValue) {
             if (internalVolumeChange) return;

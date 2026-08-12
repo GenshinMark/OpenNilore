@@ -52,7 +52,7 @@ import client.nilore.event.EventTarget;
 public class Scaffold extends Module {
     public static Scaffold INSTANCE;
 
-    public final ModeSetting mode = new ModeSetting("Mode", "Normal", "Telly Bridge", "Keep Y").withDefault("Normal");
+    public final ModeSetting mode = new ModeSetting("Mode", "Normal", "Telly Bridge", "Keep Y").withDefault("Telly Bridge");
     public final NumberSetting tellyAirTicks = new NumberSetting("AirTicks", 1, 0, 3, 0.1, () -> this.mode.is("Telly Bridge"));
     public final NumberSetting tellyPlaceDelay = new NumberSetting("PlaceDelay", 0, 0, 20, 1, () -> this.mode.is("Telly Bridge"));
     public final BooleanSetting eagle = new BooleanSetting("Eagle", true, () -> this.mode.is("Normal"));
@@ -63,9 +63,9 @@ public class Scaffold extends Module {
     public final ModeSetting blockCounterStyle = new ModeSetting("Block Counter Style", "Amunix", "Modern", "Naven").withDefault("Modern");
     public final BooleanSetting onTickRot = new BooleanSetting("OnTickRot", false);
     public final NumberSetting rotationSpeed = new NumberSetting("Rotation Speed", 180, 0, 360, 5, () -> !this.syncRotSpeed.getValue());
-    public final BooleanSetting syncRotSpeed = new BooleanSetting("Sync RotSpeed", false);
-    public final NumberSetting turnSpeed = new NumberSetting("Turn Speed", 75, 0, 360, 5, this.syncRotSpeed::getValue);
-    public final NumberSetting returnSpeed = new NumberSetting("Return Speed", 120, 0, 360, 5, this.syncRotSpeed::getValue);
+    public final BooleanSetting syncRotSpeed = new BooleanSetting("Sync RotSpeed", true);
+    public final NumberSetting turnSpeed = new NumberSetting("Turn Speed", 180, 0, 360, 5, this.syncRotSpeed::getValue);
+    public final NumberSetting returnSpeed = new NumberSetting("Return Speed", 180, 0, 360, 5, this.syncRotSpeed::getValue);
     public final ModeSetting switchMode = new ModeSetting("Switch Mode", "Normal", "Hotbar", "Full").withDefault("Hotbar");
     public final BooleanSetting print_log = new BooleanSetting("Log",false);
 

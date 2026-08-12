@@ -27,7 +27,7 @@ import client.nilore.utils.misc.ChatUtil;
 
 public class KillSay extends Module {
     public final ModeSetting fileStyle = new ModeSetting("Style", "naven-style", "southside-style").withDefault("naven-style");
-    public final NumberSetting delay = new NumberSetting("Delay", 20, 0, 120, 1);
+    public final NumberSetting delay = new NumberSetting("Delay", 30, 0, 120, 1);
     private final List<String> messages = new ArrayList<>();
     private final Map<UUID, String> attacked = new HashMap<>();
     private final Queue<String> sendQueue = new LinkedList<>();

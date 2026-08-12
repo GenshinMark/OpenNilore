@@ -30,6 +30,7 @@ extends ClientBase {
         registry.put(RiseTargetStyle.class, new RiseTargetStyle());
         registry.put(SimpleTargetStyle.class, new SimpleTargetStyle());
         registry.put(NavenTargetStyle.class, new NavenTargetStyle());
+        registry.put(ExhibitionTargetStyle.class, new ExhibitionTargetStyle());
     }
 
     public static TargetStyle getByName(String string) {

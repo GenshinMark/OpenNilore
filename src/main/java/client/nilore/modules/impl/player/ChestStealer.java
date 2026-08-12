@@ -59,8 +59,8 @@ extends Module {
 
     public static ChestStealer INSTANCE;
     private static final Timer actionTimer;
-    private final NumberSetting clickDelaySetting = new NumberSetting("Delay", 80, 0, 1000, 10);
-    private final NumberSetting openDelaySetting = new NumberSetting("Open Delay", 3, 0, 10, 1);
+    private final NumberSetting clickDelaySetting = new NumberSetting("Delay", 110, 0, 1000, 10);
+    private final NumberSetting openDelaySetting = new NumberSetting("Open Delay", 2, 0, 10, 1);
     private final BooleanSetting chestSetting = new BooleanSetting("Chest", true);
     private final BooleanSetting enderChestSetting = new BooleanSetting("Ender Chest", false);
     private final BooleanSetting furnaceSetting = new BooleanSetting("Furnace", true);

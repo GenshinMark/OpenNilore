@@ -168,7 +168,7 @@ public class SimpleNameTag extends NameTagStyle {
                     ctx.drawRoundedRect(RoundedRectangle.ofXYWHR(originX, originY, boxWidth * ratio, boxHeight, corner), this.paint);
                 }
                 int healthColor = this.getHealthColor(ratio);
-                float baseline = originY + padding + this.font.getMetrics().ascent() + 35.0f;
+                float baseline = originY + padding + this.font.getMetrics().ascent() + 15.0f;
                 this.paint.setColor(Color.WHITE.getRGB());
                 ctx.drawString(nameText, originX + padding, baseline, this.font, this.paint);
                 float nameW = this.font.getBounds(nameText).getWidth();

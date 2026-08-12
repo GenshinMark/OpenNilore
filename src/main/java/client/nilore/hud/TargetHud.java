@@ -27,7 +27,7 @@ extends HudElement {
     public static final Map<String, AtomicInteger> playerHealthMap = new HashMap<>();
     private float lastHealth;
     private float healthDelta;
-    private final ModeSetting styleMode = new ModeSetting("Mode", "Round", "Rise","Moon","Simple","Naven").withDefault("Round");
+    private final ModeSetting styleMode = new ModeSetting("Mode", "Round", "Rise","Moon","Simple","Naven","Exhibition").withDefault("Round");
 
     public TargetHud() {
         super("TargetHUD");
@@ -105,6 +105,9 @@ extends HudElement {
             } else if (targetStyle instanceof NavenTargetStyle) {
                 this.setWidth(160.0f);
                 this.setHeight(48.0f);
+            } else if (targetStyle instanceof ExhibitionTargetStyle) {
+                this.setWidth(120.0f);
+                this.setHeight(45.0f);
             } else {
                 this.setWidth(150.0f);
                 this.setHeight(36.0f);

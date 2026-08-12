@@ -49,7 +49,7 @@ public class Backtrack extends Module {
     private final NumberSetting maxTime = new NumberSetting("Max MS", 1000.0, 50.0, 3000.0, 50.0);
     private final NumberSetting delay = new NumberSetting("Delay", 200.0, 1.0, 1000.0, 10.0);
     private final NumberSetting maxRange = new NumberSetting("Max Range", 5.0, 2.0, 12.0, 0.1);
-    private final NumberSetting startRange = new NumberSetting("Start Range", 3.0, 0.1, 6.0, 0.1);
+    private final NumberSetting startRange = new NumberSetting("Start Range", 2.8, 0.1, 6.0, 0.1);
     private final BooleanSetting render = new BooleanSetting("Render", true);
 
     /* ======================== State ======================== */
