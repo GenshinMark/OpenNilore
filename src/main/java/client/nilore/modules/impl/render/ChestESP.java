@@ -27,6 +27,7 @@ import client.nilore.event.impl.WorldChangeEvent;
 import client.nilore.modules.Category;
 import client.nilore.modules.Module;
 import client.nilore.settings.impl.BooleanSetting;
+import client.nilore.settings.impl.ModeSetting;
 import client.nilore.utils.game.BlockUtil;
 import client.nilore.utils.game.ChunkUtil;
 import client.nilore.utils.render.RenderUtil;
@@ -36,7 +37,10 @@ public class ChestESP
 extends Module {
     private static final float[] chestColor;
     private static final float[] openedChestColor;
+    private static final float[] nitroChestColor;
+    private static final float[] nitroOpenedChestColor;
     private final BooleanSetting override = new BooleanSetting("Override", false);
+    private final ModeSetting style = new ModeSetting("Style", "Zen", "Nitro").withDefault("Zen");
     private final List<BlockPos> openedChestPositions = new CopyOnWriteArrayList<>();
     private final List<AABB> renderBoundingBoxes = new CopyOnWriteArrayList<>();
     private static final String MODULE_NAME;
@@ -111,10 +115,14 @@ extends Module {
         RenderSystem.setShader(GameRenderer::getPositionShader);
         Tesselator tesselator = RenderSystem.renderThreadTesselator();
         BufferBuilder bufferBuilder = tesselator.getBuilder();
+        boolean nitro = this.style.is("Nitro");
+        float[] unopenedColor = nitro ? nitroChestColor : chestColor;
+        float[] openedColor = nitro ? nitroOpenedChestColor : openedChestColor;
+        float alpha = nitro ? 0.25f + 60.0f / 255.0f : 0.25f;
         for (AABB aABB : this.renderBoundingBoxes) {
             BlockPos blockPos = BlockPos.containing(aABB.minX, aABB.minY, aABB.minZ);
-            float[] fArray = this.openedChestPositions.contains(blockPos) ? openedChestColor : chestColor;
-            RenderSystem.setShaderColor(fArray[0], fArray[1], fArray[2], 0.25f);
+            float[] fArray = this.openedChestPositions.contains(blockPos) ? openedColor : unopenedColor;
+            RenderSystem.setShaderColor(fArray[0], fArray[1], fArray[2], alpha);
             RenderUtil.drawBoxVerts(bufferBuilder, poseStack.last().pose(), aABB);
         }
         RenderSystem.disableBlend();
@@ -127,5 +135,7 @@ extends Module {
         MODULE_NAME = "ChestESP";
         chestColor = new float[]{0.0f, 1.0f, 0.0f};
         openedChestColor = new float[]{1.0f, 0.0f, 0.0f};
+        nitroChestColor = new float[]{55.0f / 255.0f, 162.0f / 255.0f, 87.0f / 255.0f};
+        nitroOpenedChestColor = new float[]{153.0f / 255.0f, 30.0f / 255.0f, 76.0f / 255.0f};
     }
 }

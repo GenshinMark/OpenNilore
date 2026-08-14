@@ -1,5 +1,6 @@
 package client.nilore.modules.impl.combat.antikb;
 
+import com.mojang.blaze3d.platform.InputConstants;
 import java.util.concurrent.LinkedBlockingDeque;
 
 import client.nilore.NiloreClient;
@@ -66,6 +67,8 @@ public class NoXZMode
     private float instantAttackProgress = 0.0f;
     private boolean isInstantAttacking = false;
     private boolean shouldFlushMotion;
+    private boolean jumpResetQueued = false;
+    private int jumpResetHoldTicks = 0;
 
     @Override
     public boolean isActive() {
@@ -166,6 +169,12 @@ public class NoXZMode
                 this.hitCounter = 1;
             }
             if (motionPacket.getYa() > 0) {
+                if (AntiKB.INSTANCE.jumpReset.getValue()
+                        && mc.player.onGround() && !this.shouldIgnore()) {
+                    // JumpReset：附加一个跳跃，其余 NoXZ 逻辑照常执行
+                    this.jumpResetQueued = true;
+                    this.jumpResetHoldTicks = 2;
+                }
                 Entity target;
                 this.sprintBoostCounter = this.sprintBoostCounter % 100 + 100;
                 if (this.sprintBoostCounter >= 100) {
@@ -218,6 +227,8 @@ public class NoXZMode
         this.shouldJump = false;
         this.sprintBoostCounter = 0;
         this.hitCounter = 0;
+        this.jumpResetQueued = false;
+        this.jumpResetHoldTicks = 0;
         this.resetSuspension();
     }
 
@@ -320,6 +331,19 @@ public class NoXZMode
     public void onTick(TickEvent tickEvent) {
         if (mc.player == null) {
             return;
+        }
+        if (this.jumpResetQueued) {
+            if (this.jumpResetHoldTicks > 0) {
+                // 挂起时 NoXZ 自己接管击退，跳过附加跳跃，避免叠加击退
+                if (mc.player.onGround() && !this.shouldIgnore() && !this.isSuspending) {
+                    mc.options.keyJump.setDown(true);
+                }
+                this.jumpResetHoldTicks--;
+            } else {
+                this.jumpResetQueued = false;
+                boolean down = InputConstants.isKeyDown(mc.getWindow().getWindow(), mc.options.keyJump.getKey().getValue());
+                mc.options.keyJump.setDown(down);
+            }
         }
         if (this.attackCooldown > 0) {
             --this.attackCooldown;

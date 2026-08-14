@@ -15,7 +15,6 @@ import client.nilore.event.impl.SprintEvent;
 import client.nilore.event.impl.StrafeEvent;
 import client.nilore.event.impl.TickEvent;
 import client.nilore.modules.impl.combat.antikb.JumpResetMode;
-import client.nilore.modules.impl.combat.antikb.MixMode;
 import client.nilore.modules.impl.combat.antikb.NoXZMode;
 
 public abstract class AntiKBMode
@@ -29,7 +28,6 @@ extends ClientBase {
 
     public static void initModes() {
         modes.put(JumpResetMode.class, new JumpResetMode());
-        modes.put(MixMode.class, new MixMode());
         modes.put(NoXZMode.class, new NoXZMode());
     }
 

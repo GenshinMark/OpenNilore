@@ -180,7 +180,7 @@ public class MaterialClickGui extends Screen {
         MD3Theme.text("Nilore", tx, py + 13f, titleF, MD3Theme.TEXT_HIGH, a);
 
         FontRenderer betaF = MD3Theme.fontLabel(1f);
-        float betaY = py + 28f;
+        float betaY = py + 26f;
         RenderUtil.drawRoundedRect(gg.pose(), tx, betaY - 1f, 24f, 13f, 6.5f, // 34
                 MD3Theme.withAlpha(MD3Theme.PRIMARY_CONTAINER, a * 0.52f));
         MD3Theme.text("beta", tx + 6f, betaY+5f, betaF, MD3Theme.PRIMARY, a * 0.92f);
@@ -483,17 +483,17 @@ public class MaterialClickGui extends Screen {
 
         // Search icon
         FontRenderer iconF = MD3Theme.fontMaterial(16f);
-        GlHelper.drawText("", x + 9f, y + (SEARCH_H - iconF.getMetrics().capHeight()) / 2f + 2f,
+        GlHelper.drawText("", x + 9f, y + (SEARCH_H - iconF.getMetrics().capHeight()) / 2f + 3f,
                 iconF, MD3Theme.withAlpha(MD3Theme.TEXT_LOW, a));
 
         float tx = x + 30f;
         if (!searching && query.isEmpty()) {
             FontRenderer pf = MD3Theme.fontBody(1f);
             MD3Theme.text("Search modules...", tx,
-                    -2f+y + (SEARCH_H - pf.getMetrics().capHeight()) / 2f, pf, MD3Theme.TEXT_DISABLED, a);
+                    y + (SEARCH_H - pf.getMetrics().capHeight()) / 2f, pf, MD3Theme.TEXT_DISABLED, a);
         } else {
             FontRenderer qf = MD3Theme.fontBodyLarge(1f);
-            float qy = y + (SEARCH_H - qf.getMetrics().capHeight()) / 2f;
+            float qy = y + 2f + (SEARCH_H - qf.getMetrics().capHeight()) / 2f;
             MD3Theme.text(query, tx, qy, qf, MD3Theme.TEXT_HIGH, a);
             if (searchFocus) {
                 float blink = (float)(Math.sin((System.currentTimeMillis() - cursorTime) / 200.0) * 0.5 + 0.5);

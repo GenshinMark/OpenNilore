@@ -70,6 +70,7 @@ public class MusicPlayerScreen extends Screen {
     private static final FontRenderer LYRIC_ACTIVE_FONT = FontPresets.pingfang(33.0f);
     private static final FontRenderer ICON_FONT = FontPresets.materialIcons(28.0f);
     private static final FontRenderer ICON_LARGE = FontPresets.materialIcons(38.0f);
+    private static final FontRenderer USERNAME_FONT = FontPresets.pingfang(33.0f);
 
     private static final String ICON_PREV = "";
     private static final String ICON_PLAY = "";
@@ -215,15 +216,15 @@ public class MusicPlayerScreen extends Screen {
     }
 
     private void renderSidebar(DrawContext ctx, float x, float y, float w, float h, float mouseX, float mouseY) {
-        ctx.drawRoundedRect(RoundedRectangle.ofXYWHR(x + 15.84f, y + 15.84f, 49.28f, 42.24f, 14.08f), new Paint().setColor(BERRY));
-        drawCentered(ICON_MUSIC, x + 15.84f, y + 32.56f, 49.28f, ICON_LARGE, ACCENT);
+        ctx.drawRoundedRect(RoundedRectangle.ofXYWHR(x + 15.84f, y + 20.84f, 49.28f, 42.24f, 14.08f), new Paint().setColor(BERRY));
+        drawCentered(ICON_MUSIC, x + 15.84f, y + 37.56f, 49.28f, ICON_LARGE, ACCENT);
 
-        float navY = y + 80.08f;
+        float navY = y + 85.08f;
         navItem(ctx, x + 8.8f, navY, w - 17.6f, Page.HOME, ICON_HOME, "Home", mouseX, mouseY);
         navItem(ctx, x + 8.8f, navY + 63.36f, w - 17.6f, Page.SEARCH, ICON_SEARCH, "Search", mouseX, mouseY);
         navItem(ctx, x + 8.8f, navY + 126.72f, w - 17.6f, Page.QUEUE, ICON_QUEUE, "Queue", mouseX, mouseY);
         navItem(ctx, x + 8.8f, navY + 190.08f, w - 17.6f, Page.PLAYLIST, ICON_PLAYLIST, "Library", mouseX, mouseY);
-        navItem(ctx, x + 8.8f, h - 58.08f, w - 17.6f, Page.ABOUT, ICON_INFO, "About", mouseX, mouseY);
+        navItem(ctx, x + 8.8f, h - 53.08f, w - 17.6f, Page.ABOUT, ICON_INFO, "About", mouseX, mouseY);
     }
 
     private void navItem(DrawContext ctx, float x, float y, float w, Page target, String icon, String label,
@@ -232,7 +233,7 @@ public class MusicPlayerScreen extends Screen {
         boolean active = page == target;
         boolean hover = contains(mouseX, mouseY, x, y, w, h);
         if (active || hover) {
-            ctx.drawRoundedRect(RoundedRectangle.ofXYWHR(x, y, w, h, 15.84f),
+            ctx.drawRoundedRect(RoundedRectangle.ofXYWHR(x, y - 3.0f, w, h, 15.84f),
                     new Paint().setColor(active ? 0xFF60404B : withAlpha(RAISED, 0.82f)));
         }
         drawCentered(icon, x, y + 14.08f, w, ICON_FONT, active ? ACCENT : hover ? CREAM : MUTED);
@@ -246,9 +247,12 @@ public class MusicPlayerScreen extends Screen {
         String username = Minecraft.getInstance().player == null
                 ? "Player"
                 : Minecraft.getInstance().player.getGameProfile().getName();
-        GlHelper.drawText(greeting() + ", " + ellipsize(username, DISPLAY_FONT, 376), innerX, y + 22.88f, DISPLAY_FONT, CREAM);
+        String greetingLine = greeting() + ", ";
+        GlHelper.drawText(greetingLine, innerX, y + 22.88f, DISPLAY_FONT, CREAM);
+        GlHelper.drawText(ellipsize(username, USERNAME_FONT, 376), innerX + measure(greetingLine, DISPLAY_FONT),
+                y + 22.88f, USERNAME_FONT, CREAM);
         GlHelper.drawText("Music picked for this moment", innerX, y + 51.04f, BODY_FONT, MUTED);
-        renderHeaderActions(ctx, x + w - PAD - 130.24f, y + 19.36f, mouseX, mouseY);
+        renderHeaderActions(ctx, x + w - PAD - 130.24f, y + 23.36f, mouseX, mouseY);
 
         float heroY = y + 73.04f;
         float heroH = 138.16f;
@@ -274,15 +278,15 @@ public class MusicPlayerScreen extends Screen {
         float actionW = 31.68f;
         float gap = 9.6f;
         float startX = x + (w - actionW * 3.0f - gap * 2.0f) * 0.5f;
-        headerAction(ctx, startX, y + 4, ICON_SEARCH, mouseX, mouseY, () -> openPage(Page.SEARCH));
-        headerAction(ctx, startX + actionW + gap, y + 4, ICON_INFO, mouseX, mouseY, () -> openPage(Page.ABOUT));
-        headerAction(ctx, startX + (actionW + gap) * 2.0f, y + 4, ICON_CLOSE, mouseX, mouseY, this::onClose);
+        headerAction(ctx, startX, y + 7, ICON_SEARCH, mouseX, mouseY, () -> openPage(Page.SEARCH));
+        headerAction(ctx, startX + actionW + gap, y + 7, ICON_INFO, mouseX, mouseY, () -> openPage(Page.ABOUT));
+        headerAction(ctx, startX + (actionW + gap) * 2.0f, y + 7, ICON_CLOSE, mouseX, mouseY, this::onClose);
     }
 
     private void headerAction(DrawContext ctx, float x, float y, String icon, float mouseX, float mouseY, Runnable action) {
         boolean hover = contains(mouseX, mouseY, x, y, 31.68f, 28.16f);
         if (hover) {
-            ctx.drawRoundedRect(RoundedRectangle.ofXYWHR(x, y, 31.68f, 28.16f, 14.08f), new Paint().setColor(RAISED));
+            ctx.drawRoundedRect(RoundedRectangle.ofXYWHR(x, y - 3.0f, 31.68f, 28.16f, 14.08f), new Paint().setColor(RAISED));
         }
         drawCentered(icon, x, y + 12, 31.68f, ICON_FONT, hover ? ACCENT : MUTED);
         clickAreas.add(new ClickArea(x, y, 31.68f, 28.16f, action));
@@ -588,7 +592,7 @@ public class MusicPlayerScreen extends Screen {
         drawControl(ctx, center + sideOffset - 13.64f, y + 20.24f, 27.28f, 29.92f, ICON_NEXT, false, mouseX, mouseY, this::nextSong);
 
         String current = timestamp(player.getCurrentPositionMs());
-        GlHelper.drawText(current, x + w - 131, y + 33, SMALL_FONT, MUTED);
+        GlHelper.drawText(current, x + w - 131, y + 34, SMALL_FONT, MUTED);
         GlHelper.drawText(ICON_VOLUME, x + w - 93, y + 37, ICON_FONT, MUTED);
         float volumeX = x + w - 70;
         float volume = dragTarget == DragTarget.VOLUME && pendingVolume >= 0 ? pendingVolume : player.getVolume();

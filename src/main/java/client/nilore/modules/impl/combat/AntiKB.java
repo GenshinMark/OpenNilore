@@ -31,15 +31,14 @@ public class AntiKB
     public static AntiKB INSTANCE;
     public static Rotation rotation;
     public static ModeSetting mode;
-    public final BooleanSetting rotate = new BooleanSetting("Rotate", false, () -> mode.is("Jump Reset") || mode.is("Mix"));
-    public final BooleanSetting tryAttack = new BooleanSetting("Try Attack", false, () -> mode.is("Mix"));
-    public final BooleanSetting movementOverride = new BooleanSetting("Movement Override", false, () -> mode.is("Mix"));
+    public final BooleanSetting rotate = new BooleanSetting("Rotate", false, () -> mode.is("Jump Reset"));
     public final BooleanSetting followDirection = new BooleanSetting("Follow Direction", false, () -> mode.is("Jump Reset"));
     public final NumberSetting rotateTicks = new NumberSetting("Rotate Ticks", 12, 3, 20, 1, () -> mode.is("Jump Reset") && (this.rotate.getValue() != false || this.followDirection.getValue() != false));
     public final BooleanSetting autoAttackCount = new BooleanSetting("Auto Attack Count", true, () -> mode.is("NoXZ"));
     public final NumberSetting attackAmount = new NumberSetting("Attack amount", 5.0, 1.0, 20.0, 1, () -> mode.is("NoXZ") && !this.autoAttackCount.getValue());
     public final BooleanSetting instantAttack = new BooleanSetting("Instant Attack", false, () -> mode.is("NoXZ"));
     public final BooleanSetting sprintStateCheck = new BooleanSetting("Sprint state check", true, () -> mode.is("NoXZ"));
+    public final BooleanSetting jumpReset = new BooleanSetting("Jump Reset", false, () -> mode.is("NoXZ"));
     public final BooleanSetting debugLog = new BooleanSetting("Debug Log", false);
     private final Timer grimSyncTimer = new Timer();
     public AntiKB() {
@@ -172,6 +171,6 @@ public class AntiKB
     }
 
     static {
-        mode = new ModeSetting("Mode", "Jump Reset", "Mix", "NoXZ").withDefault("NoXZ");
+        mode = new ModeSetting("Mode", "Jump Reset", "NoXZ").withDefault("NoXZ");
     }
 }

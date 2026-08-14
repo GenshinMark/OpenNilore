@@ -1,8 +1,13 @@
 package client.nilore.modules.impl.movement;
 
 import com.mojang.blaze3d.platform.InputConstants;
+import com.mojang.blaze3d.systems.RenderSystem;
+import com.mojang.blaze3d.vertex.BufferBuilder;
+import com.mojang.blaze3d.vertex.PoseStack;
+import com.mojang.blaze3d.vertex.Tesselator;
 import java.util.List;
 import java.util.concurrent.CopyOnWriteArrayList;
+import net.minecraft.client.renderer.GameRenderer;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
 import net.minecraft.network.protocol.Packet;
@@ -16,20 +21,25 @@ import net.minecraft.world.item.BlockItem;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.level.block.AirBlock;
 import net.minecraft.world.level.block.state.BlockState;
+import net.minecraft.world.phys.AABB;
 import net.minecraft.world.phys.BlockHitResult;
 import net.minecraft.world.phys.Vec3;
 import client.nilore.ClientBase;
+import client.nilore.NiloreClient;
 import client.nilore.event.impl.JumpEvent;
 import client.nilore.event.impl.MotionEvent;
 import client.nilore.event.impl.PacketEvent;
 import client.nilore.event.impl.PreMotionEvent;
 import client.nilore.event.impl.Render2DEvent;
+import client.nilore.event.impl.RenderEvent;
 import client.nilore.event.impl.TickEvent;
 import client.nilore.event.impl.UpdateHeldItemEvent;
+import client.nilore.hud.ModuleListHud;
 import client.nilore.modules.Category;
 import client.nilore.modules.Module;
 import client.nilore.render.FontPresets;
 import client.nilore.render.FontRenderer;
+import client.nilore.render.GlHelper;
 import client.nilore.render.Paint;
 import client.nilore.render.Rectangle;
 import client.nilore.render.Renderer;
@@ -44,6 +54,7 @@ import client.nilore.utils.game.RayTraceUtil;
 import client.nilore.utils.game.RotationUtil;
 import client.nilore.utils.misc.ChatUtil;
 import client.nilore.utils.misc.PacketUtil;
+import client.nilore.utils.render.RenderUtil;
 
 import client.nilore.utils.rotation.Rotation;
 import client.nilore.utils.rotation.RotationHandler;
@@ -60,7 +71,8 @@ public class Scaffold extends Module {
     public final BooleanSetting clutch = new BooleanSetting("Clutch", true);
     public final ModeSetting swingMode = new ModeSetting("Swing", "Both", "Server").withDefault("Both");
     public final BooleanSetting blockCounter = new BooleanSetting("Block Counter", true);
-    public final ModeSetting blockCounterStyle = new ModeSetting("Block Counter Style", "Amunix", "Modern", "Naven").withDefault("Modern");
+    public final ModeSetting blockCounterStyle = new ModeSetting("Block Counter Style", "Amunix", "Modern", "Naven", "Nitro").withDefault("Modern");
+    public final NumberSetting nitroOffsetY = new NumberSetting("Nitro Offset", 20, 0, 220, 5, () -> this.blockCounterStyle.is("Nitro"));
     public final BooleanSetting onTickRot = new BooleanSetting("OnTickRot", false);
     public final NumberSetting rotationSpeed = new NumberSetting("Rotation Speed", 180, 0, 360, 5, () -> !this.syncRotSpeed.getValue());
     public final BooleanSetting syncRotSpeed = new BooleanSetting("Sync RotSpeed", true);
@@ -68,6 +80,11 @@ public class Scaffold extends Module {
     public final NumberSetting returnSpeed = new NumberSetting("Return Speed", 180, 0, 360, 5, this.syncRotSpeed::getValue);
     public final ModeSetting switchMode = new ModeSetting("Switch Mode", "Normal", "Hotbar", "Full").withDefault("Hotbar");
     public final BooleanSetting print_log = new BooleanSetting("Log",false);
+    public final BooleanSetting mark = new BooleanSetting("Mark", true);
+    public final NumberSetting markRed = new NumberSetting("Mark Red", 255, 0, 255, 1, () -> this.mark.getValue());
+    public final NumberSetting markGreen = new NumberSetting("Mark Green", 55, 0, 255, 1, () -> this.mark.getValue());
+    public final NumberSetting markBlue = new NumberSetting("Mark Blue", 100, 0, 255, 1, () -> this.mark.getValue());
+    public final NumberSetting markAlpha = new NumberSetting("Mark Alpha", 130, 0, 255, 1, () -> this.mark.getValue());
 
     public Rotation rots = new Rotation();
     public Rotation lastRots = new Rotation();
@@ -356,6 +373,33 @@ public class Scaffold extends Module {
     }
 
     @EventTarget
+    public void onRender(RenderEvent event) {
+        if (mc.player == null || mc.level == null) return;
+        if (!this.mark.getValue()) return;
+        if (this.currentPlacement == null) return;
+
+        PoseStack poseStack = event.poseStack();
+        poseStack.pushPose();
+        RenderSystem.disableDepthTest();
+        RenderSystem.enableBlend();
+        RenderSystem.defaultBlendFunc();
+        RenderSystem.setShader(GameRenderer::getPositionShader);
+        Tesselator tesselator = RenderSystem.renderThreadTesselator();
+        BufferBuilder bufferBuilder = tesselator.getBuilder();
+        RenderSystem.setShaderColor(
+                this.markRed.getValue().floatValue() / 255.0f,
+                this.markGreen.getValue().floatValue() / 255.0f,
+                this.markBlue.getValue().floatValue() / 255.0f,
+                this.markAlpha.getValue().floatValue() / 255.0f);
+        RenderUtil.drawBoxVerts(bufferBuilder, poseStack.last().pose(),
+                new AABB(this.currentPlacement.position.relative(this.currentPlacement.facing)));
+        RenderSystem.disableBlend();
+        RenderSystem.enableDepthTest();
+        RenderSystem.setShaderColor(1.0f, 1.0f, 1.0f, 1.0f);
+        poseStack.popPose();
+    }
+
+    @EventTarget
     public void onRender2D(Render2DEvent event) {
         if (mc.player == null || mc.level == null) return;
         if (!this.blockCounter.getValue()) return;
@@ -386,6 +430,7 @@ public class Scaffold extends Module {
             case "Modern" -> this.renderModernShelfHud(event, totalBlocks, animProg);
             case "Amunix" -> this.renderSimpleShelfHud(event, totalBlocks, animProg);
             case "Naven" -> this.renderNavenBlockHud(event, totalBlocks);
+            case "Nitro" -> this.renderNitroBlockHud(event, totalBlocks);
         }
     }
 
@@ -505,6 +550,56 @@ public class Scaffold extends Module {
                 // Text
                 paint.setColor(0xFFFFFFFF);
                 drawContext.drawString(text, x + 5f, y + textYOff, navenFont, paint);
+            }
+        });
+    }
+
+    private void renderNitroBlockHud(Render2DEvent event, int totalBlocks) {
+        if (mc.player == null) return;
+        ItemStack held = mc.player.getMainHandItem();
+        if (held.isEmpty() || !(held.getItem() instanceof BlockItem)) return;
+        String itemName = held.getHoverName().getString();
+        String countStr = String.valueOf(held.getCount());
+
+        ModuleListHud moduleList = NiloreClient.getInstance().getHudManager() != null
+                ? NiloreClient.getInstance().getHudManager().getHudElement(ModuleListHud.class)
+                : null;
+
+        FontRenderer nameFont = FontPresets.pingfang(18f);
+        FontRenderer countFont = FontPresets.axiformaRegular(18f);
+        float textWidth = GlHelper.getStringWidth(itemName, nameFont)
+                + GlHelper.getStringWidth(" " + countStr, countFont);
+        float padX = 6f;
+        float padY = 6f;
+        float boxW = textWidth + padX * 2f;
+        float boxH = Math.max(nameFont.getMetrics().capHeight(), countFont.getMetrics().capHeight()) + padY * 2f;
+        float screenWidth = mc.getWindow().getGuiScaledWidth();
+        float screenHeight = mc.getWindow().getGuiScaledHeight();
+        float boxX = (screenWidth - boxW) / 2f;
+        float boxY = screenHeight / 2f + this.nitroOffsetY.getValue().floatValue();
+        float textX = boxX + padX;
+        float textY = boxY + (boxH - GlHelper.getFontAscent(nameFont)) / 2f + 0.25f;
+        float radius = Math.min(6f, boxH / 2f);
+
+        Renderer.render(event.guiGraphics(), drawContext -> {
+            try (Paint paint = new Paint()) {
+                // 圆角矩形背景
+                paint.setColor(0xCC10151C);
+                drawContext.drawRoundedRect(RoundedRectangle.ofXYWHR(boxX, boxY, boxW, boxH, radius), paint);
+
+                // 物品名：pingfang 逐字符跟随 ModuleListHud 渐变色（左移 1f）
+                float cursor = textX - 1f;
+                int len = itemName.length();
+                for (int i = 0; i < len; i++) {
+                    String ch = String.valueOf(itemName.charAt(i));
+                    float t = len <= 1 ? 0.0f : i / (float) (len - 1);
+                    int color = moduleList != null
+                            ? moduleList.getThemeColor(i, t, Math.max(1, len - 1))
+                            : 0xFFFFFFFF;
+                    cursor = GlHelper.drawText(ch, cursor, textY + 0.75f, nameFont, color);
+                }
+                // 数量：axiforma_regular 白色（下移 1f、右移 1f）
+                GlHelper.drawText(" " + countStr, cursor + 1f, textY + 1.5f, countFont, 0xFFFFFFFF);
             }
         });
     }
