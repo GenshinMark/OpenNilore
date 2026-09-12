@@ -37,7 +37,7 @@ public class AntiKB
     public final BooleanSetting autoAttackCount = new BooleanSetting("Auto Attack Count", true, () -> mode.is("NoXZ"));
     public final NumberSetting attackAmount = new NumberSetting("Attack amount", 5.0, 1.0, 20.0, 1, () -> mode.is("NoXZ") && !this.autoAttackCount.getValue());
     public final BooleanSetting instantAttack = new BooleanSetting("Instant Attack", false, () -> mode.is("NoXZ"));
-    public final BooleanSetting sprintStateCheck = new BooleanSetting("Sprint state check", true, () -> mode.is("NoXZ"));
+    public final BooleanSetting sprintStateCheck = new BooleanSetting("Sprint state check", false, () -> mode.is("NoXZ"));
     public final NumberSetting maxDelayTicks = new NumberSetting("Max Delay Ticks", 10.0, 1.0, 120.0, 1.0, () -> mode.is("NoXZ"));
     public final BooleanSetting requireKillAura = new BooleanSetting("Require KillAura", true, () -> mode.is("NoXZ"));
     public final BooleanSetting renderBar = new BooleanSetting("Render Bar", false, () -> mode.is("NoXZ"));

@@ -25,7 +25,6 @@ import net.minecraft.client.renderer.texture.DynamicTexture;
 import net.minecraft.client.gui.screens.inventory.AbstractContainerScreen;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.util.Mth;
-import net.minecraft.network.protocol.game.ServerboundMovePlayerPacket;
 import net.minecraft.world.InteractionHand;
 import net.minecraftforge.client.ForgeHooksClient;
 import net.minecraft.world.entity.Entity;
@@ -90,8 +89,6 @@ public class KillAura extends Module {
     private static boolean nurikTextureLoaded;
     private static boolean nurikTextureLoadFailed;
 
-    // Fields kept in sync with the obfuscated jar: 13 BooleanSetting / 7
-    // NumberSetting / 3 ModeSetting, in declaration order.
     public final BooleanSetting attackPlayer    = new BooleanSetting("Attack Player", true);
     public final BooleanSetting attackInvisible = new BooleanSetting("Attack Invisible", true);
     public final BooleanSetting attackAnimals   = new BooleanSetting("Attack Animals", false);
@@ -101,18 +98,11 @@ public class KillAura extends Module {
     public final BooleanSetting preferBaby      = new BooleanSetting("Prefer Baby", false);
     public final BooleanSetting morePart        = new BooleanSetting("More Particles", false);
     public final BooleanSetting keepSprint = new BooleanSetting("Keep Sprint", true);
-    public final ModeSetting style = new ModeSetting("Style", "New", "Old", "onTickRot").withDefault("New");
-
-    public final BooleanSetting fix             = new BooleanSetting("Fix", false,
-            () -> this.style.is("Old"));
-    public final BooleanSetting overrideRaycast = new BooleanSetting("Override Raycast", true,
-            () -> this.style.is("Old") || this.style.is("onTickRot"));
     public final BooleanSetting throughWalls    = new BooleanSetting("Through Walls", false);
     public final NumberSetting throughWallsRange = new NumberSetting("Through Walls Range", 3.0, 1.0, 6.0, 0.1,
             () -> (Boolean) this.throughWalls.getValue());
     public final BooleanSetting ignoreSkipTicks = new BooleanSetting("Ignore skip ticks", false);
     public final BooleanSetting fakeAutoBlock   = new BooleanSetting("Fake AutoBlock", true);
-    public final BooleanSetting test            = new BooleanSetting("Test", false);
     public final NumberSetting aimRange    = new NumberSetting("Aim Range", 3.0, 1.0, 6.0, 0.1);
     public final NumberSetting maxAps      = new NumberSetting("Max APS", 12.0, 1.0, 20.0, 1.0);
     public final NumberSetting minAps      = new NumberSetting("Min APS", 9.0, 1.0, 20.0, 1.0);
@@ -132,7 +122,7 @@ public class KillAura extends Module {
     public final NumberSetting selfDelayThreshold  = new NumberSetting("Self Delay Ticks", 2, 1, 5, 1,
             () -> (Boolean) this.predictionEnabled.getValue());
 
-    public final NumberSetting rotationSpeed = new NumberSetting("Rotation Speed", 180, 0, 720, 5);
+    public final NumberSetting rotationSpeed = new NumberSetting("Rotation Speed", 180, 0, 360, 5);
     public final NumberSetting rotationDrift = new NumberSetting("Drift", 0.1, 0, 5, 0.1);
     public final NumberSetting rotationJitter = new NumberSetting("Jitter", 0.02, 0, 1, 0.01);
 
@@ -142,7 +132,6 @@ public class KillAura extends Module {
     private float attacks;
     private int targetIndex;
     public int sprintTickCounter;
-    private int sprintCounter;
     public Rotation rotation;
 
     private Random organicRandom;
@@ -173,15 +162,9 @@ public class KillAura extends Module {
         target = null;
         aimingTarget = null;
         this.sprintTickCounter = 0;
-        this.sprintCounter = 0;
         this.attackTimes = 0;
         this.rotation = null;
         super.onDisable();
-    }
-
-    @Override
-    public String getSuffix() {
-        return this.style.getValue();
     }
 
     private void reinitOrganicModel() {
@@ -421,7 +404,7 @@ public class KillAura extends Module {
         }
         if (mc.screen instanceof AbstractContainerScreen
                 || ItemUtil.hasServerItem()
-                || (Scaffold.INSTANCE != null && Scaffold.INSTANCE.isEnabled() && !this.style.is("onTickRot"))
+                || (Scaffold.INSTANCE != null && Scaffold.INSTANCE.isEnabled())
                 || (Stuck.INSTANCE != null && Stuck.INSTANCE.isEnabled())
                 || (Helper.INSTANCE != null && Helper.INSTANCE.isEnabled() && Helper.targetRotation != null)
                 || AntiWeb.targetRotation != null
@@ -436,7 +419,6 @@ public class KillAura extends Module {
             targetList.clear();
             this.sprintTickCounter = 0;
             this.attacks = 0.0f;
-            this.sprintCounter = 0;
             return;
         }
 
@@ -450,21 +432,17 @@ public class KillAura extends Module {
         if (aimingTarget != null) {
             this.currentBestHit = RotationUtil.getBestHit(aimingTarget);
             if (this.currentBestHit != null && this.currentBestHit.rotation() != null) {
-                if (this.style.is("onTickRot")) {
-                    this.rotation = null;
-                } else {
-                    Rotation from = RotationHandler.prevRotation != null
-                            ? RotationHandler.prevRotation
-                            : new Rotation(mc.player.getYRot(), mc.player.getXRot());
-                    Rotation organic = this.applyOrganicRotation(from, this.currentBestHit.rotation(), 1.0f);
-                    this.rotation = (organic != null
-                            && !Float.isNaN(organic.getYaw())
-                            && !Float.isNaN(organic.getPitch())
-                            && !Float.isInfinite(organic.getYaw())
-                            && !Float.isInfinite(organic.getPitch()))
-                            ? organic
-                            : this.currentBestHit.rotation();
-                }
+                Rotation from = RotationHandler.prevRotation != null
+                        ? RotationHandler.prevRotation
+                        : new Rotation(mc.player.getYRot(), mc.player.getXRot());
+                Rotation organic = this.applyOrganicRotation(from, this.currentBestHit.rotation(), 1.0f);
+                this.rotation = (organic != null
+                        && !Float.isNaN(organic.getYaw())
+                        && !Float.isNaN(organic.getPitch())
+                        && !Float.isInfinite(organic.getYaw())
+                        && !Float.isInfinite(organic.getPitch()))
+                        ? organic
+                        : this.currentBestHit.rotation();
             } else {
                 this.rotation = null;
             }
@@ -498,32 +476,21 @@ public class KillAura extends Module {
             this.targetIndex = 0;
         }
         target = targetList.get(this.targetIndex);
-        if (this.style.is("Old")) {
-            float apsValue;
-            float minApsValue;
-            if (NoXZMode.isAttacking) {
-                int kbAttackAmount = AntiKB.INSTANCE != null
-                        ? AntiKB.INSTANCE.attackAmount.getValue().intValue()
-                        : 0;
-                apsValue = this.maxAps.getValue().floatValue() - kbAttackAmount;
-                minApsValue = this.minAps.getValue().floatValue() - kbAttackAmount;
-            } else {
-                apsValue = this.maxAps.getValue().floatValue();
-                minApsValue = this.minAps.getValue().floatValue();
-            }
-            this.attacks += (float)(MathUtil.randomDouble(minApsValue, apsValue) / 20.0);
-        } else {
-            float apsValue = this.maxAps.getValue().floatValue();
-            float minApsValue = this.minAps.getValue().floatValue();
-            if (NoXZMode.isAttacking) {
-                int kbAttackAmount = AntiKB.INSTANCE != null
-                        ? AntiKB.INSTANCE.attackAmount.getValue().intValue()
-                        : 0;
-                apsValue -= kbAttackAmount;
-                minApsValue -= kbAttackAmount;
-            }
-            this.attacks += (float)(MathUtil.randomDouble(minApsValue, apsValue) / 20.0);
+        // 1.9 模式: 攻击冷却未满时不累积攻击计数, 等冷却回满再攻击
+        if (this.delayMode.is("1.9") && mc.player.getAttackStrengthScale(0.0f) < 0.95f) {
+            this.attacks = 0.0f;
+            return;
         }
+        float apsValue = this.maxAps.getValue().floatValue();
+        float minApsValue = this.minAps.getValue().floatValue();
+        if (NoXZMode.isAttacking) {
+            int kbAttackAmount = AntiKB.INSTANCE != null
+                    ? AntiKB.INSTANCE.attackAmount.getValue().intValue()
+                    : 0;
+            apsValue -= kbAttackAmount;
+            minApsValue -= kbAttackAmount;
+        }
+        this.attacks += (float)(MathUtil.randomDouble(minApsValue, apsValue) / 20.0);
     }
 
     @EventTarget
@@ -537,14 +504,17 @@ public class KillAura extends Module {
                 && mc.screen == null
                 && (this.ignoreSkipTicks.getValue() || ClientBase.delayPackets.isEmpty()
                 || (Critical.INSTANCE != null && Critical.INSTANCE.isEnabled()))) {
+            // res јхiа: keepSprint 开启时, 满足条件(空中跳劈等)先 stop sprint
+            if (this.keepSprint.getValue() && mc.player.isSprinting() && this.shouldStopSprint(target)) {
+                mc.player.setSprinting(false);
+            }
+            // res eеxі: keepSprint 开启 + 还在疾跑 + NoXZ 未激活时跳过攻击, 保持疾跑
+            if (this.keepSprint.getValue() && mc.player.isSprinting() && !NoXZMode.handlingVelocity) {
+                this.attacks = 0.0f;
+                return;
+            }
             while (this.attacks >= 1.0f) {
-                if (this.style.is("Old") && (Boolean) this.fix.getValue()) {
-                    if (!this.doAttack()) {
-                        break;
-                    }
-                } else {
-                    this.doAttack();
-                }
+                this.doAttack();
                 this.attacks -= 1.0f;
             }
         } else {
@@ -558,19 +528,9 @@ public class KillAura extends Module {
             return false;
         }
         if (targetList.isEmpty()) return false;
-        if (this.rotation == null && !this.style.is("onTickRot")) return false;
+        if (this.rotation == null) return false;
 
-        HitResult hitResult;
-        if ((this.style.is("Old") || this.style.is("onTickRot"))
-                && (Boolean) this.overrideRaycast.getValue()
-                && this.currentBestHit != null && this.currentBestHit.rotation() != null) {
-            hitResult = RotationUtil.performRaycast(this.currentBestHit.rotation());
-            if (hitResult == null || hitResult.getType() != HitResult.Type.ENTITY) {
-                return false;
-            }
-        } else {
-            hitResult = mc.hitResult;
-        }
+        HitResult hitResult = mc.hitResult;
         if (hitResult != null && hitResult.getType() == HitResult.Type.ENTITY) {
             Entity hitEntity = ((EntityHitResult) hitResult).getEntity();
             if (AntiBots.isBot(hitEntity)) {
@@ -637,14 +597,6 @@ public class KillAura extends Module {
             if (livingEntity.isDeadOrDying() || livingEntity.getHealth() <= 0.0f) return false;
             if (entity instanceof ArmorStand) return false;
             if (entity.isInvisible() && !(Boolean) this.attackInvisible.getValue()) return false;
-            if (entity instanceof Player player) {
-                if (this.test.getValue() && player.getY() >= mc.player.getY() + 0.05f) {
-                    return true;
-                }
-                // NiloreClient.isOwner() was stripped during deobfuscation; the
-                // original jar bailed here when the entity name matched the
-                // client owner. Re-enable once that helper is restored.
-            }
             if (Teams.isSameTeam(entity)) return false;
             if (entity instanceof Player && !(Boolean) this.attackPlayer.getValue()) return false;
             if (entity instanceof Player && (entity.getBbWidth() < 0.5 || livingEntity.isSleeping())) return false;
@@ -679,11 +631,11 @@ public class KillAura extends Module {
                 return false;
             }
         }
-        // Wall check (New / onTickRot only) — reject if a block sits between
-        // the player and the entity. When "Through Walls" is on and the
-        // target is close enough, the check is skipped so you can attack
-        // through thin walls at close range.
-        if ((this.style.is("New") || this.style.is("onTickRot")) && mc.level != null) {
+        // Wall check — reject if a block sits between the player and the
+        // entity. When "Through Walls" is on and the target is close enough,
+        // the check is skipped so you can attack through thin walls at close
+        // range.
+        if (mc.level != null) {
             boolean skipWallCheck = this.throughWalls.getValue()
                     && dist <= this.throughWallsRange.getValue().floatValue();
             if (!skipWallCheck) {
@@ -738,13 +690,6 @@ public class KillAura extends Module {
         if (mc.player == null || mc.gameMode == null) return false;
         if (this.isWebPlacing()) return false;
 
-        if (this.style.is("onTickRot")) {
-            return this.attackEntityNewFix(entity);
-        }
-
-        // KeepSprint(参考 res): 攻击前记录疾跑状态, 疾跑攻击时保持疾跑
-        boolean keepSprinting = this.keepSprint.getValue() && mc.player.isSprinting();
-
         float currentYaw = mc.player.getYRot();
         float currentPitch = mc.player.getXRot();
         if (RotationHandler.targetRotation != null) {
@@ -764,82 +709,24 @@ public class KillAura extends Module {
             mc.player.crit(entity);
         }
 
-        // KeepSprint: 攻击后保持疾跑; Critical 松疾跑窗口(hurtTime∈[2,8])内不恢复
-        if (keepSprinting && !mc.player.isSprinting() && !this.criticalReleaseWindow()) {
-            mc.player.setSprinting(true);
-        }
-
         mc.player.setYRot(currentYaw);
         mc.player.setXRot(currentPitch);
-
-        if (this.delayMode.is("1.9")) {
-            this.sprintCounter = (int) mc.player.getCurrentItemAttackStrengthDelay();
-        }
         return true;
     }
 
-    private boolean attackEntityNewFix(Entity entity) {
-        if (mc.getConnection() == null) return false;
+    // res саѕһa 的翻译: 判断是否该在攻击前停止疾跑
+    private boolean shouldStopSprint(Entity entity) {
+        if (mc.player == null || mc.level == null || entity == null) return false;
 
-        // KeepSprint(参考 res): 攻击前记录疾跑状态
-        boolean keepSprinting = this.keepSprint.getValue() && mc.player.isSprinting();
-
-        float origYaw = mc.player.getYRot();
-        float origPitch = mc.player.getXRot();
-
-        Rotation targetRot = this.currentBestHit != null ? this.currentBestHit.rotation() : null;
-        if (targetRot == null) return false;
-
-        float jitter1 = rotationJitter();
-        float jitter2 = rotationJitter();
-        float jitter3 = rotationJitter();
-
-        mc.getConnection().send(new ServerboundMovePlayerPacket.PosRot(
-                mc.player.getX(), mc.player.getY(), mc.player.getZ(),
-                targetRot.getYaw() + jitter1,
-                targetRot.getPitch() + jitter1,
-                mc.player.onGround()
-        ));
-
-        mc.getConnection().send(new ServerboundMovePlayerPacket.PosRot(
-                mc.player.getX(), mc.player.getY(), mc.player.getZ(),
-                targetRot.getYaw() + jitter2,
-                targetRot.getPitch() + jitter2,
-                mc.player.onGround()
-        ));
-
-        ++this.attackTimes;
-        mc.gameMode.attack(mc.player, entity);
-        mc.player.swing(InteractionHand.MAIN_HAND);
-        if (this.morePart.getValue()) {
-            mc.player.magicCrit(entity);
-            mc.player.crit(entity);
+        // velocity 联动: NoXZ 正在处理击退时不打断疾跑, 交给 AntiKB 自己管
+        if (NoXZMode.handlingVelocity) {
+            return false;
         }
 
-        mc.getConnection().send(new ServerboundMovePlayerPacket.PosRot(
-                mc.player.getX(), mc.player.getY(), mc.player.getZ(),
-                origYaw + jitter3,
-                origPitch + jitter3,
-                mc.player.onGround()
-        ));
-
-        // KeepSprint: 攻击后保持疾跑; Critical 松疾跑窗口(hurtTime∈[2,8])内不恢复
-        if (keepSprinting && !mc.player.isSprinting() && !this.criticalReleaseWindow()) {
-            mc.player.setSprinting(true);
-        }
-
-        return true;
-    }
-
-    // Critical 松疾跑窗口(hurtTime∈[2,8])内, 攻击后不主动恢复疾跑, 避免 KeepSprint 与 Critical 互相拉扯
-    private boolean criticalReleaseWindow() {
-        return Critical.INSTANCE != null && Critical.INSTANCE.isEnabled()
-                && Critical.INSTANCE.isReleaseWindow();
-    }
-
-    private float rotationJitter() {
-        float offset = (float) (Math.random() * 0.04 + 0.03);
-        return Math.random() > 0.5 ? offset : -offset;
+        return entity.getBoundingBox().distanceToSqr(mc.player.getEyePosition()) <= 12.25
+                && mc.player.getUseItem().isEmpty()
+                && !NoXZMode.isAttacking
+                && (!mc.player.onGround() || !mc.options.keyUp.isDown());
     }
 
     private boolean isWebPlacing() {

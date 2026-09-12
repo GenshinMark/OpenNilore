@@ -282,12 +282,15 @@ public class NoXZMode
                         handlingVelocity = false;
                         this.delayTicks = 0;
                     }
-                } else {
+                } else if (!canAttack) {
+                    // 目标无效: 取消 Alink, 放行暂缓包
                     this.release();
                     if (instantAttackEnabled) {
                         this.instantAttackProgress = 0.0f;
                     }
-                    // res 对齐: 落地不满足时不主动 setSprinting(false), 疾跑交给移动模块, 避免与 Critical 松疾跑互相拉扯
+                } else {
+                    // res eppоре 对齐: 落地但不在疾跑时不取消 Alink, 保持暂缓等待(超时兜底)
+                    // 疾跑由 onStrafe 在击退窗口内保持, 等恢复疾跑再放行
                 }
                 return;
             }
@@ -316,6 +319,10 @@ public class NoXZMode
         }
         if (this.hitCounter > 0) {
             strafeEvent.setForward(1.0f);
+            // res soіhр 对齐: 击退窗口内保持疾跑, 避免落地时 sprinting=false 导致 Alink 被取消
+            if (mc.player.isSprinting() && mc.player.hurtTime <= 9) {
+                strafeEvent.setSprinting(true);
+            }
         }
         if (this.shouldJump) {
             this.shouldJump = false;

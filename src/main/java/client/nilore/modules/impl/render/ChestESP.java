@@ -6,6 +6,8 @@ import com.mojang.blaze3d.vertex.PoseStack;
 import com.mojang.blaze3d.vertex.Tesselator;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Set;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.stream.Collectors;
 import net.minecraft.client.renderer.GameRenderer;
@@ -41,7 +43,7 @@ extends Module {
     private static final float[] nitroOpenedChestColor;
     private final BooleanSetting override = new BooleanSetting("Override", false);
     private final ModeSetting style = new ModeSetting("Style", "Zen", "Nitro").withDefault("Zen");
-    private final List<BlockPos> openedChestPositions = new CopyOnWriteArrayList<>();
+    private final Set<BlockPos> openedChestPositions = ConcurrentHashMap.newKeySet();
     private final List<AABB> renderBoundingBoxes = new CopyOnWriteArrayList<>();
     private static final String MODULE_NAME;
 

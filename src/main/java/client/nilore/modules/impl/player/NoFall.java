@@ -1,13 +1,9 @@
 package client.nilore.modules.impl.player;
 
-import com.mojang.blaze3d.platform.InputConstants;
 import net.minecraft.network.protocol.game.ClientboundPlayerPositionPacket;
 import net.minecraft.network.protocol.game.ServerboundPlayerCommandPacket;
-import client.nilore.event.impl.KeyEvent;
 import client.nilore.event.impl.MotionEvent;
 import client.nilore.event.impl.PacketEvent;
-import client.nilore.event.impl.StrafeEvent;
-import client.nilore.event.impl.TickEvent;
 import client.nilore.modules.Category;
 import client.nilore.modules.Module;
 import client.nilore.settings.impl.NumberSetting;
@@ -17,15 +13,11 @@ import client.nilore.event.EventTarget;
 public class NoFall
 extends Module {
     public static NoFall INSTANCE;
-    private final NumberSetting fallDistanceSetting = new NumberSetting("Fall Distance", 3.0, 0.0, 10.0, 0.5);
-    private boolean isFalling = false;
-    private boolean sentFlyPacket = false;
     public boolean jumpLandingBoost = false;
-    private boolean receivedPositionPacket = false;
     public boolean boostActive = false;
-    private int boostTick = 0;
-    private int airTicks = 0;
-    private boolean jumpToggle = false;
+    private final NumberSetting fallDistanceSetting = new NumberSetting("Fall Distance", 3.0, 0.0, 10.0, 0.5);
+    private boolean fallDistanceReached = false;
+    private boolean sentFlyPacket = false;
 
     public NoFall() {
         super("NoFall", Category.PLAYER);
@@ -43,92 +35,45 @@ extends Module {
     }
 
     private void reset() {
-        this.isFalling = false;
+        this.fallDistanceReached = false;
         this.sentFlyPacket = false;
         this.jumpLandingBoost = false;
-        this.receivedPositionPacket = false;
         this.boostActive = false;
-        this.jumpToggle = false;
-        this.boostTick = 0;
     }
 
     @EventTarget(value=0)
-    public void onTick(TickEvent tickEvent) {
-        if (mc.player == null) {
+    public void onMotion(MotionEvent motionEvent) {
+        if (mc.player == null || mc.isSingleplayer()) {
             return;
         }
-        this.airTicks = mc.player.onGround() ? 0 : ++this.airTicks;
-        if (this.isFalling && this.airTicks > 0) {
-            this.jumpToggle = !this.jumpToggle;
-            mc.options.keyJump.setDown(this.jumpToggle);
+        if (!mc.player.onGround()) {
+            // 空中下落, 记录下落距离是否达标
+            if (mc.player.fallDistance >= this.fallDistanceSetting.getValue().floatValue()) {
+                this.fallDistanceReached = true;
+            }
+            return;
         }
-        if (this.receivedPositionPacket) {
-            if (mc.player.getY() > 0.3525 && mc.options.keyJump.isDown() && this.airTicks > 0) {
+        // 碰到地板 + 下落距离达标, 才发鞘翅包
+        if (this.fallDistanceReached) {
+            this.fallDistanceReached = false;
+            if (!this.sentFlyPacket) {
+                PacketUtil.sendQueued(new ServerboundPlayerCommandPacket(mc.player, ServerboundPlayerCommandPacket.Action.START_FALL_FLYING));
+                this.sentFlyPacket = true;
                 this.boostActive = true;
             }
-            if (this.boostActive) {
-                ++this.boostTick;
-                if (this.boostTick >= 21) {
-                    this.reset();
-                }
-            }
-        }
-    }
-
-    @EventTarget(value=0)
-    public void onKey(KeyEvent keyEvent) {
-        if (mc.player == null) {
-            return;
-        }
-        if (this.isFalling && !mc.player.onGround() && keyEvent.getKeyCode() == 32) {
-            keyEvent.setCancelled(true);
-        }
-        if (this.boostTick > 0 && keyEvent.getKeyCode() == 32) {
-            keyEvent.setCancelled(true);
-        }
-    }
-
-    @EventTarget
-    public void onMotion(MotionEvent motionEvent) {
-        if (mc.player == null) {
-            return;
-        }
-        if (motionEvent.isPre() || mc.isSingleplayer()) {
-            return;
-        }
-        if (mc.player.fallDistance >= this.fallDistanceSetting.getValue().floatValue()) {
-            this.isFalling = true;
-        }
-        if (mc.player.onGround() && mc.player.verticalCollision && this.isFalling) {
-            this.jumpLandingBoost = true;
-            this.sentFlyPacket = true;
-            this.sendFlyPacket();
-        }
-    }
-
-    @EventTarget
-    public void onStrafe(StrafeEvent strafeEvent) {
-        if (mc.player == null) {
-            return;
-        }
-        if (this.jumpLandingBoost) {
-            mc.options.keyJump.setDown(true);
-        } else if (!this.isFalling || mc.player.onGround()) {
-            mc.options.keyJump.setDown(InputConstants.isKeyDown(mc.getWindow().getWindow(), mc.options.keyJump.getKey().getValue()));
         }
     }
 
     @EventTarget
     public void onPacket(PacketEvent packetEvent) {
-        if (packetEvent.getPacket() instanceof ClientboundPlayerPositionPacket && this.sentFlyPacket) {
-            this.receivedPositionPacket = true;
-        }
-    }
-
-    private void sendFlyPacket() {
         if (mc.player == null) {
             return;
         }
-        PacketUtil.sendQueued(new ServerboundPlayerCommandPacket(mc.player, ServerboundPlayerCommandPacket.Action.START_FALL_FLYING));
+        // 收到服务器回应(s08 位置同步包)后, 把 y 向上微调 1e-9
+        if (this.sentFlyPacket && packetEvent.getPacket() instanceof ClientboundPlayerPositionPacket) {
+            mc.player.setPos(mc.player.getX(), mc.player.getY() + 1.0E-9, mc.player.getZ());
+            this.sentFlyPacket = false;
+            this.boostActive = false;
+        }
     }
 }

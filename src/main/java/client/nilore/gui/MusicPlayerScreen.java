@@ -1,8 +1,10 @@
 package client.nilore.gui;
 
 import com.mojang.blaze3d.platform.NativeImage;
+import com.mojang.blaze3d.systems.RenderSystem;
 import java.io.ByteArrayInputStream;
 import java.net.URI;
+import java.nio.file.Path;
 import java.time.LocalTime;
 import java.util.ArrayList;
 import java.util.List;
@@ -16,6 +18,7 @@ import net.minecraft.client.gui.screens.Screen;
 import net.minecraft.client.renderer.texture.DynamicTexture;
 import net.minecraft.network.chat.Component;
 import org.lwjgl.glfw.GLFW;
+import client.nilore.ClientBase;
 import client.nilore.NiloreClient;
 import client.nilore.modules.impl.misc.MusicPlayer;
 import client.nilore.modules.impl.misc.music.AudioPlayer;
@@ -23,7 +26,12 @@ import client.nilore.modules.impl.misc.music.LyricLine;
 import client.nilore.modules.impl.misc.music.MusicHttp;
 import client.nilore.modules.impl.misc.music.NeteaseApi;
 import client.nilore.modules.impl.misc.music.SongInfo;
+import client.nilore.modules.impl.misc.music.provider.MusicSource;
+import client.nilore.modules.impl.misc.music.provider.MusicSources;
+import client.nilore.modules.impl.misc.music.provider.NeteaseOfficialApi;
+import client.nilore.modules.impl.misc.music.provider.QrCode;
 import client.nilore.modules.impl.render.LyricsModule;
+import client.nilore.render.CoverBackdrop;
 import client.nilore.render.DrawContext;
 import client.nilore.render.FontPresets;
 import client.nilore.render.FontRenderer;
@@ -36,6 +44,7 @@ import client.nilore.render.Texture;
 import client.nilore.utils.animation.SmoothAnimationTimer;
 import client.nilore.utils.math.Easings;
 import client.nilore.utils.render.ColorUtil;
+import client.nilore.utils.render.MonetPalette;
 
 public class MusicPlayerScreen extends Screen {
     private static final float DESIGN_W = 760.32f;
@@ -45,20 +54,100 @@ public class MusicPlayerScreen extends Screen {
     private static final float PAD = 22.88f;
     private static final float RADIUS = 19.36f;
 
-    private static final int SCRIM = 0xC30B0807;
-    private static final int SHELL = 0xFF1B1215;
-    private static final int SIDEBAR = 0xFF24171C;
-    private static final int SURFACE = 0xFF2D1E23;
-    private static final int RAISED = 0xFF3A272E;
-    private static final int BERRY = 0xFF81344F;
-    private static final int BERRY_HOVER = 0xFF98405F;
-    private static final int ACCENT = 0xFFFFA6C3;
-    private static final int ACCENT_STRONG = 0xFFFF8FB5;
-    private static final int CREAM = 0xFFF8EEF1;
-    private static final int MUTED = 0xFFC1AAB2;
-    private static final int DIM = 0xFF77646B;
-    private static final int GOLD = 0xFF604915;
-    private static final int GOLD_TEXT = 0xFFFFE5A4;
+    // 配色不再是写死的常量：每首歌按封面动态提取（Material You / Monet），换歌时平滑过渡。
+    // 这里从 static final 改成可变静态字段，是为了让下面上百处引用一行都不用动。
+    // 字面值只是占位，静态块里会用兜底配色覆盖一遍（见本类末尾的 static 块）。
+    private static int SCRIM = 0xC30B0807;
+    private static int SHELL = 0xFF1B1215;
+    private static int SIDEBAR = 0xFF24171C;
+    private static int SURFACE = 0xFF2D1E23;
+    private static int RAISED = 0xFF3A272E;
+    private static int BERRY = 0xFF81344F;
+    private static int BERRY_HOVER = 0xFF98405F;
+    private static int ACCENT = 0xFFFFA6C3;
+    private static int ACCENT_STRONG = 0xFFFF8FB5;
+    private static int ACCENT_HOVER = 0xFFFFB9CE;
+    private static int CREAM = 0xFFF8EEF1;
+    private static int MUTED = 0xFFC1AAB2;
+    private static int DIM = 0xFF77646B;
+    private static int NAV_ACTIVE = 0xFF60404B;
+    private static int ROW_ACTIVE = 0xFF52313D;
+    private static int DIVIDER = 0xFF3B2B31;
+
+    // --- 动态配色状态 ---
+    // 配色是全局共享的（上面那些字段是 static），所以状态也放 static。
+    // 同一时刻只会开一个播放器界面，不会互相干扰。
+    private static MonetPalette.Scheme themeCurrent = MonetPalette.fallback();
+    private static MonetPalette.Scheme themeFrom = themeCurrent;
+    private static MonetPalette.Scheme themeTarget = themeCurrent;
+    private static float themeProgress = 1.0f;
+    /** 换歌时配色过渡时长（秒）。 */
+    private static final float THEME_FADE_SECONDS = 0.85f;
+
+    private static long frameLastNanos = 0L;
+
+    /**
+     * 把一套 Monet 配色套到上面那组字段上。
+     *
+     * <p>tone 按 Material 3 深色方案取：表面层级 surfaceLowest(5) → surfaceHighest(21)，
+     * 主色块 primaryContainer(30)，强调色 primary(80)，正文 onSurface(92)，描边 outline(60)。
+     */
+    private static void applyScheme(MonetPalette.Scheme scheme) {
+        SCRIM = MonetPalette.withAlphaOf(scheme.surfaceLowest(), 0xC3);
+        SHELL = scheme.surfaceLowest();
+        SIDEBAR = scheme.surfaceContainer();
+        SURFACE = scheme.surfaceHigh();
+        RAISED = scheme.surfaceHighest();
+        BERRY = scheme.primaryContainer();
+        BERRY_HOVER = scheme.primary.at(36);
+        ACCENT = scheme.primary();
+        ACCENT_STRONG = scheme.primary.at(88);
+        ACCENT_HOVER = scheme.primary.at(92);
+        CREAM = scheme.onSurface();
+        MUTED = scheme.onSurfaceVariant();
+        DIM = scheme.outline();
+        NAV_ACTIVE = scheme.secondaryContainer();
+        ROW_ACTIVE = scheme.secondaryContainer();
+        DIVIDER = scheme.outlineVariant();
+    }
+
+    /** 本帧与上一帧的间隔（秒），夹在 [0, 0.1] 内，避免卡顿后动画整段跳过去。 */
+    private static float frameDelta() {
+        long now = System.nanoTime();
+        float delta = frameLastNanos == 0L ? 0.0f : (now - frameLastNanos) / 1.0e9f;
+        frameLastNanos = now;
+        return Math.min(Math.max(delta, 0.0f), 0.1f);
+    }
+
+    /** 推进配色过渡。过渡结束后直接返回，不做事。 */
+    private static void tickTheme(float delta) {
+        if (themeProgress >= 1.0f) {
+            return;
+        }
+        themeProgress = Math.min(1.0f, themeProgress + delta / THEME_FADE_SECONDS);
+        themeCurrent = MonetPalette.lerp(themeFrom, themeTarget, themeProgress);
+        applyScheme(themeCurrent);
+    }
+
+    /**
+     * 切到新配色。
+     *
+     * <p>起点用「当前显示的颜色」而不是上一个目标色，这样连续换歌时不会跳变。
+     */
+    private static void setTheme(MonetPalette.Scheme next) {
+        if (next == null) {
+            return;
+        }
+        themeFrom = themeCurrent;
+        themeTarget = next;
+        themeProgress = 0.0f;
+    }
+
+    static {
+        // 上面那些字面色值只是占位。开局统一走一遍取色管线，
+        // 保证「打开界面时」和「换歌后」走的是同一套逻辑，避免第一首歌加载完时颜色突跳。
+        applyScheme(themeCurrent);
+    }
 
     private static final FontRenderer DISPLAY_FONT = FontPresets.poppinsBold(33.0f);
     private static final FontRenderer TITLE_FONT = FontPresets.pingfang(29.0f);
@@ -129,17 +218,56 @@ public class MusicPlayerScreen extends Screen {
     private float layoutOriginY;
     private float layoutScale = 1.0f;
 
+    /** 流体色雾是否已就绪。true 时 renderRoot 会把流体画进圆角背景板。 */
+    private boolean fluidActive;
+
     private final SmoothAnimationTimer openAnim = new SmoothAnimationTimer();
     private volatile Texture albumTexture;
     private long albumSongId = -1;
     private volatile boolean albumLoading;
     private volatile byte[] albumBytes;
     private int albumRetryCount;
+    // 背景用的是封面压出来的 32×32 色雾（见 CoverBackdrop.prepareFluidPalette），不是封面本身。
+    // 单独记一份：albumTexture 在换歌加载期间会被清空，背景不能跟着闪回原版背景。
+    private volatile Texture fluidTexture;
+    private volatile Texture fluidPrev;
+    /** 背景在新旧色雾之间的插值，0 = 旧，1 = 新。 */
+    private float backdropFade = 1.0f;
+    private static final float BACKDROP_FADE_SECONDS = 0.7f;
+    /** 有流体背景时的遮罩透明度。默认的 0xC3 是给世界画面兜底用的，压在自发光背景上会把光压没。 */
+    private static final int SCRIM_ALPHA_FLUID = 0x66;
+
+    // 持久化：网易官方登录态（Cookie 串）、当前播放渠道。
+    // 路径放在 .minecraft/nilore/ 下，和其它 mod 配置区分开。
+    private final Path sessionFile = Minecraft.getInstance().gameDirectory.toPath()
+            .resolve("nilore").resolve("netease_session.txt");
+    private final Path sourceFile = Minecraft.getInstance().gameDirectory.toPath()
+            .resolve("nilore").resolve("music_source.txt");
+
+    // 二维码登录弹层状态。点 About 页里的登录卡片打开；用户扫码成功后自动关闭。
+    private boolean loginDialogOpen = false;
+    private QrCode.RenderableQr loginQr;
+    // loginQrKey / loginQrStatus 在 CompletableFuture 回调线程里赋值、渲染线程读，
+    // 不加 volatile 渲染线程可能一直读到旧值（表现为扫码成功后界面毫无反应）。
+    private volatile String loginQrKey;
+    private volatile NeteaseOfficialApi.QrStatus loginQrStatus = NeteaseOfficialApi.QrStatus.WAITING;
+    private long loginQrNextPollMs;
+    /** CONFIRMED 那一刻的时间戳，用于延迟 1.2 秒再自动关弹层。0 表示不在确认流程里。 */
+    private long lastLoginConfirmMs;
+
+    // 弹层自己的点击区。必须和主界面的 clickAreas 分开：
+    // 主界面走设计坐标（有 translate/scale 变换），弹层在变换之外、用屏幕像素定位，
+    // 混在同一个列表里会因为坐标系不同而永远匹配不上（表现为关闭按钮点不掉）。
+    private final List<ClickArea> dialogClickAreas = new ArrayList<>();
 
     public MusicPlayerScreen() {
         super(Component.literal("Music Player"));
         MusicPlayer.AUDIO_PLAYER.setNearEndListener(this::requestPreloadForNext);
         MusicPlayer.AUDIO_PLAYER.setOnCrossfadeTrackListener(this::onCrossfadeTrack);
+        // 启动恢复：上次选的播放渠道 + 网易官方登录态（如果登录过）。
+        // 两边都在 catch 里吞异常，缺文件/坏数据都不影响正常使用。
+        MusicSources.load(sourceFile);
+        NeteaseOfficialApi.loadSession(sessionFile);
     }
 
     @Override
@@ -147,18 +275,55 @@ public class MusicPlayerScreen extends Screen {
         if (Minecraft.getInstance().level == null) {
             MusicPlayer.AUDIO_PLAYER.stop();
         }
+        // 二维码登录轮询：每 1.5 秒问一次。状态变 CONFIRMED/EXPIRED/FAILED 后不再轮询。
+        if (loginDialogOpen && loginQrKey != null
+                && loginQrStatus != NeteaseOfficialApi.QrStatus.CONFIRMED
+                && loginQrStatus != NeteaseOfficialApi.QrStatus.EXPIRED
+                && loginQrStatus != NeteaseOfficialApi.QrStatus.FAILED
+                && System.currentTimeMillis() >= loginQrNextPollMs) {
+            loginQrNextPollMs = System.currentTimeMillis() + 1500L;
+            NeteaseOfficialApi.pollQr(loginQrKey, sessionFile).thenAccept(s -> loginQrStatus = s);
+        }
+    }
+
+    @Override
+    public void onClose() {
+        // 退出时落盘当前播放渠道。Cookie 文件由 NeteaseOfficialApi 自己在登录成功时存。
+        MusicSources.save(sourceFile);
+        releaseLoginQr();
+        super.onClose();
+    }
+
+    private void releaseLoginQr() {
+        if (loginQr != null) {
+            // 必须从 TextureManager 注销，否则 GL 纹理 ID 泄漏。
+            // TextureManager.release 只清掉引用，DynamicTexture 的 NativeImage 靠 GC finalize 释放。
+            Minecraft.getInstance().getTextureManager().release(loginQr.location());
+            loginQr = null;
+        }
     }
 
     @Override
     public void render(GuiGraphics graphics, int mouseX, int mouseY, float partialTick) {
         clickAreas.clear();
+        dialogClickAreas.clear();
         searchViewport = null;
         queueViewport = null;
         playlistViewport = null;
         lastProgressRect = null;
         lastVolumeRect = null;
 
-        if (Minecraft.getInstance().level == null) {
+        float delta = frameDelta();
+        tickTheme(delta);
+        if (backdropFade < 1.0f) {
+            backdropFade = Math.min(1.0f, backdropFade + delta / BACKDROP_FADE_SECONDS);
+        }
+        // 流体是否就绪。真正的绘制在 renderRoot 里做 —— 要裁剪到圆角背景板内。
+        // 色雾还没算出来时只有主菜单退回原版背景；游戏内退回原版背景会把世界画面糊掉，
+        // 所以那种情况直接不画，让世界照常透出来（和原来的行为一致）。
+        Texture fluid = fluidTexture;
+        fluidActive = fluid != null && fluid.getGlId() > 0;
+        if (!fluidActive && Minecraft.getInstance().level == null) {
             renderBackground(graphics);
         }
 
@@ -171,14 +336,23 @@ public class MusicPlayerScreen extends Screen {
         float designMouseX = toDesignX(mouseX);
         float designMouseY = toDesignY(mouseY);
 
+        // 有流体背景时用更轻的遮罩，否则自发光背景会被自己的遮罩压成一坨死黑。
+        final int scrimColor = fluidActive
+                ? MonetPalette.withAlphaOf(SCRIM, SCRIM_ALPHA_FLUID)
+                : SCRIM;
+
         Renderer.render(graphics, ctx -> {
             float alpha = openAnim.getValueF();
-            ctx.drawRectXYWH(0, 0, width, height, new Paint().setColor(withAlpha(SCRIM, alpha)));
+            ctx.drawRectXYWH(0, 0, width, height, new Paint().setColor(withAlpha(scrimColor, alpha)));
             ctx.save();
             ctx.translate(layoutOriginX, layoutOriginY);
             ctx.scale(layoutScale, layoutScale);
             renderRoot(ctx, designMouseX, designMouseY, alpha);
             ctx.restore();
+            // 登录弹层在 ctx.restore() 之后画 —— 栈已经退回到屏幕坐标，弹层用屏幕像素定位。
+            if (loginDialogOpen) {
+                renderLoginDialog(ctx, mouseX, mouseY);
+            }
         });
     }
 
@@ -190,8 +364,25 @@ public class MusicPlayerScreen extends Screen {
     }
 
     private void renderRoot(DrawContext ctx, float mouseX, float mouseY, float alpha) {
+        // 背景板（不透明底色）。流体要画在它上面、被它裁出圆角。
         ctx.drawRoundedRect(RoundedRectangle.ofXYWHR(0, 0, DESIGN_W, DESIGN_H, RADIUS),
                 new Paint().setColor(withAlpha(SHELL, alpha)));
+
+        // 发光流体：只填在背景板这一块圆角矩形里，不是铺满整屏。
+        // CoverBackdrop 是直接在裁剪空间画全屏四边形的、不走 DrawContext，
+        // 所以 GUI 层的 clipRect 对它无效 —— 把面板的屏幕坐标矩形传进去，
+        // 由着色器自己做圆角 SDF 裁剪。
+        if (fluidActive) {
+            Texture fluid = fluidTexture;
+            Texture previous = fluidPrev;
+            CoverBackdrop.render(fluid.getGlId(),
+                    previous == null ? fluid.getGlId() : previous.getGlId(),
+                    backdropFade, width, height, 0.0f,
+                    new CoverBackdrop.PanelRect(
+                            layoutOriginX, layoutOriginY,
+                            DESIGN_W * layoutScale, DESIGN_H * layoutScale,
+                            RADIUS * layoutScale));
+        }
 
         if (page == Page.PLAYER) {
             renderPlayerPage(ctx, mouseX, mouseY);
@@ -200,7 +391,7 @@ public class MusicPlayerScreen extends Screen {
 
         float contentH = DESIGN_H - BOTTOM_H;
         ctx.drawRoundedRect(RoundedRectangle.ofXYWHRadii(0, 0, SIDEBAR_W, contentH,
-                new float[]{RADIUS, 0, 0, 0}), new Paint().setColor(SIDEBAR));
+                new float[]{RADIUS, 0, 0, 0}), new Paint().setColor(withAlpha(SIDEBAR, 0.85f)));
         renderSidebar(ctx, 0, 0, SIDEBAR_W, contentH, mouseX, mouseY);
         renderCurrentPage(ctx, SIDEBAR_W, 0, DESIGN_W - SIDEBAR_W, contentH, mouseX, mouseY);
         renderPlaybackBar(ctx, 0, contentH, DESIGN_W, BOTTOM_H, mouseX, mouseY);
@@ -236,7 +427,7 @@ public class MusicPlayerScreen extends Screen {
         boolean hover = contains(mouseX, mouseY, x, y, w, h);
         if (active || hover) {
             ctx.drawRoundedRect(RoundedRectangle.ofXYWHR(x, y - 3.0f, w, h, 15.84f),
-                    new Paint().setColor(active ? 0xFF60404B : withAlpha(RAISED, 0.82f)));
+                    new Paint().setColor(active ? NAV_ACTIVE : withAlpha(RAISED, 0.82f)));
         }
         drawCentered(icon, x, y + 14.08f, w, ICON_FONT, active ? ACCENT : hover ? CREAM : MUTED);
         drawCentered(label, x, y + 31.68f, w, NAV_FONT, active ? CREAM : MUTED);
@@ -297,7 +488,10 @@ public class MusicPlayerScreen extends Screen {
     private void renderDailyMix(DrawContext ctx, float x, float y, float w, float h, float mouseX, float mouseY) {
         List<SongInfo> songs = recommendations();
         SongInfo hero = songs.isEmpty() ? null : songs.get(0);
-        ctx.drawRoundedRect(RoundedRectangle.ofXYWHR(x, y, w, h, 25), new Paint().setColor(BERRY));
+        // 背景和下面 "Made for you" 推荐卡片同款：SURFACE 半透明，hover 时 RAISED。
+        boolean cardHover = contains(mouseX, mouseY, x, y, w, h);
+        ctx.drawRoundedRect(RoundedRectangle.ofXYWHR(x, y, w, h, 25),
+                new Paint().setColor(cardHover ? RAISED : withAlpha(SURFACE, 0.682f)));
 
         float art = h - 33.44f;
         float artX = x + 19.36f;
@@ -314,7 +508,7 @@ public class MusicPlayerScreen extends Screen {
         float buttonW = hero == null ? 109.12f : 98.56f;
         boolean hover = contains(mouseX, mouseY, textX, buttonY, buttonW, 28.16f);
         ctx.drawRoundedRect(RoundedRectangle.ofXYWHR(textX, buttonY, buttonW, 28.16f, 14.08f),
-                new Paint().setColor(hover ? 0xFFFFB9CE : ACCENT));
+                new Paint().setColor(hover ? ACCENT_HOVER : ACCENT));
         GlHelper.drawText(hero == null ? ICON_SEARCH : ICON_PLAY, textX + 12.32f, buttonY + 15, ICON_FONT, 0xFF431A28);
         GlHelper.drawText(hero == null ? "Find music" : "Listen now", textX + 32,
                 buttonY + (hero == null ? 9.68f : 11.68f), SMALL_FONT, 0xFF431A28);
@@ -430,7 +624,7 @@ public class MusicPlayerScreen extends Screen {
             boolean playing = isCurrentSong(song);
             if (hover || playing) {
                 ctx.drawRoundedRect(RoundedRectangle.ofXYWHR(x, rowY, w, rowH, 13),
-                        new Paint().setColor(playing ? 0xFF52313D : RAISED));
+                        new Paint().setColor(playing ? ROW_ACTIVE : RAISED));
             }
             GlHelper.drawText(playing ? "♪" : String.valueOf(i + 1), x + 14, rowY + 19, SMALL_FONT,
                     playing ? ACCENT : DIM);
@@ -502,13 +696,13 @@ public class MusicPlayerScreen extends Screen {
             boolean playing = isCurrentSong(song);
             if (hover || playing) {
                 ctx.drawRoundedRect(RoundedRectangle.ofXYWHR(innerX, rowY, innerW, rowH, 13),
-                        new Paint().setColor(playing ? 0xFF52313D : RAISED));
+                        new Paint().setColor(playing ? ROW_ACTIVE : RAISED));
             }
             if (playing) {
                 ctx.drawRoundedRect(RoundedRectangle.ofXYWHR(innerX + 4, rowY + 12, 3, rowH - 24, 1.65f),
                         new Paint().setColor(ACCENT));
             }
-            GlHelper.drawText(playing ? "♪" : String.valueOf(i + 1), innerX + 16, rowY + 20, SMALL_FONT,
+            GlHelper.drawText(String.valueOf(i + 1), innerX + 16, rowY + 20, SMALL_FONT,
                     playing ? ACCENT : DIM);
             GlHelper.drawText(ellipsize(song.name, BODY_FONT, innerW - 150), innerX + 48, rowY + 12, BODY_FONT,
                     playing ? CREAM : MUTED);
@@ -537,22 +731,208 @@ public class MusicPlayerScreen extends Screen {
         GlHelper.drawText("A focused player for your Minecraft sessions", innerX, y + 54.56f, BODY_FONT, MUTED);
 
         float cardY = y + 82.72f;
-        aboutCard(ctx, innerX, cardY, w - PAD * 2, 63.36f, "Music source", "Search and playback are powered by NetEase Music.");
-        aboutCard(ctx, innerX, cardY + 68, w - PAD * 2, 63.36f, "Library", "Saved tracks are stored locally in your Nilore config.");
-        aboutCard(ctx, innerX, cardY + 136, w - PAD * 2, 63.36f, "Playback", "Music keeps playing after this screen is closed.");
+
+        // 第一张：可点击的播放渠道切换器。点击循环切到下一个 source。
+        MusicSource current = MusicSources.current();
+        MusicSource next = nextSource(current);
+        boolean sourceHover = contains(mouseX, mouseY, innerX, cardY, w - PAD * 2, 63.36f);
+        aboutCard(ctx, innerX, cardY, w - PAD * 2, 63.36f,
+                "Music source",
+                current.displayName() + "   →   click to switch to " + next.displayName(),
+                sourceHover ? RAISED : SURFACE);
+        clickAreas.add(new ClickArea(innerX, cardY, w - PAD * 2, 63.36f, this::cycleMusicSource));
+
+        // 第二张：网易官方登录卡片。
+        // 只有当前 source 是官方时才显示 —— gdstudio 不需要登录、登录也没用。
+        float secondCardY = cardY + 68;
+        if ("NetEase Official".equals(current.displayName())) {
+            String loginText = NeteaseOfficialApi.isLoggedIn()
+                    ? "Signed in. Open login dialog to re-authorize on another device."
+                    : "Sign in to play VIP-only tracks. QR-code login, no password leaves this device.";
+            boolean loginHover = contains(mouseX, mouseY, innerX, secondCardY, w - PAD * 2, 63.36f);
+            aboutCard(ctx, innerX, secondCardY, w - PAD * 2, 63.36f, "NetEase Account", loginText,
+                    loginHover ? RAISED : SURFACE);
+            clickAreas.add(new ClickArea(innerX, secondCardY, w - PAD * 2, 63.36f, this::openLoginDialog));
+            secondCardY += 68;
+        }
+
+        aboutCard(ctx, innerX, secondCardY, w - PAD * 2, 63.36f, "Library",
+                "Saved tracks are stored locally in your Nilore config.");
+        aboutCard(ctx, innerX, secondCardY + 68, w - PAD * 2, 63.36f, "Playback",
+                "Music keeps playing after this screen is closed.");
 
         boolean hover = contains(mouseX, mouseY, innerX, h - 50.16f, 116, 29.92f);
         ctx.drawRoundedRect(RoundedRectangle.ofXYWHR(innerX, h - 50.16f, 116, 29.92f, 14.96f),
                 new Paint().setColor(hover ? BERRY_HOVER : BERRY));
-        GlHelper.drawText(ICON_SEARCH, innerX + 12.32f, h - 36.08f, ICON_FONT, ACCENT);
-        GlHelper.drawText("Search music", innerX + 36.96f, h - 40, SMALL_FONT, CREAM);
+        GlHelper.drawText(ICON_SEARCH, innerX + 12.32f, h - 35.08f, ICON_FONT, ACCENT);
+        GlHelper.drawText("Search music", innerX + 36.96f, h - 39, SMALL_FONT, CREAM);
         clickAreas.add(new ClickArea(innerX, h - 50.16f, 116, 29.92f, () -> openPage(Page.SEARCH)));
     }
 
-    private void aboutCard(DrawContext ctx, float x, float y, float w, float h, String title, String text) {
-        ctx.drawRoundedRect(RoundedRectangle.ofXYWHR(x, y, w, h, 17), new Paint().setColor(SURFACE));
+    private void aboutCard(DrawContext ctx, float x, float y, float w, float h, String title, String text, int bg) {
+        ctx.drawRoundedRect(RoundedRectangle.ofXYWHR(x, y, w, h, 17), new Paint().setColor(bg));
         GlHelper.drawText(title, x + 18, y + 18, HEADING_FONT, CREAM);
         GlHelper.drawText(ellipsize(text, BODY_FONT, w - 36), x + 18, y + 45, BODY_FONT, MUTED);
+    }
+
+    // 老的双参重载：内部默认 SURFACE 颜色
+    private void aboutCard(DrawContext ctx, float x, float y, float w, float h, String title, String text) {
+        aboutCard(ctx, x, y, w, h, title, text, SURFACE);
+    }
+
+    /** 当前 source 列表里下一个 source，用于 "click to switch to ..." 提示。 */
+    private static MusicSource nextSource(MusicSource current) {
+        List<MusicSource> all = MusicSources.all();
+        for (int i = 0; i < all.size(); i++) {
+            if (all.get(i).displayName().equals(current.displayName())) {
+                return all.get((i + 1) % all.size());
+            }
+        }
+        return all.get(0);
+    }
+
+    private void cycleMusicSource() {
+        MusicSources.setCurrent(nextSource(MusicSources.current()).displayName());
+        MusicSources.save(sourceFile);
+    }
+
+    private void openLoginDialog() {
+        loginDialogOpen = true;
+        loginQrStatus = NeteaseOfficialApi.QrStatus.WAITING;
+        loginQrNextPollMs = 0L; // 立刻拉一次
+        NeteaseOfficialApi.requestQrKey().thenAccept(key -> {
+            if (key == null) {
+                loginQrStatus = NeteaseOfficialApi.QrStatus.FAILED;
+                return;
+            }
+            loginQrKey = key;
+            // 生成二维码 + 上传纹理都是 GL 操作，必须在渲染线程跑。
+            // 直接在 CompletableFuture 的回调里做会在 GL 线程外调 upload() 而失败，
+            // 且异常被回调吞掉 —— 表现就是二维码永远停在 "Generating QR..."。
+            RenderSystem.recordRenderCall(() -> {
+                try {
+                    releaseLoginQr();
+                    QrCode.RenderableQr renderable =
+                            QrCode.render(NeteaseOfficialApi.qrContent(key), 240);
+                    Minecraft.getInstance().getTextureManager()
+                            .register(renderable.location(), renderable.texture());
+                    loginQr = renderable;
+                } catch (Throwable t) {
+                    // 用 Throwable 而不是 Exception：zxing 缺依赖时抛的是
+                    // NoClassDefFoundError（Error 不是 Exception），不接住会直接崩游戏。
+                    // 接住后只显示 Failed，不再整个客户端崩掉。
+                    ClientBase.logger.error("二维码生成失败（多半是 zxing 依赖没进 classpath）", t);
+                    loginQrStatus = NeteaseOfficialApi.QrStatus.FAILED;
+                }
+            });
+        }).exceptionally(e -> {
+            // 网络层已经把异常吞成 null 了，这里兜住「请求本身抛异常」的情况
+            ClientBase.logger.error("申请二维码 key 失败", e);
+            loginQrStatus = NeteaseOfficialApi.QrStatus.FAILED;
+            return null;
+        });
+    }
+
+    private void closeLoginDialog() {
+        loginDialogOpen = false;
+        releaseLoginQr();
+    }
+
+    /**
+     * 渲染网易云扫码登录弹层。
+     *
+     * <p>布局：屏幕居中面板（深底 + 圆角），上方标题与关闭按钮，中间二维码（240×240），
+     * 下方状态文字跟随 {@code loginQrStatus} 切换。
+     */
+    private void renderLoginDialog(DrawContext ctx, int mouseX, int mouseY) {
+        // 背景遮罩（让背后内容变暗但不完全黑）
+        ctx.drawRectXYWH(0, 0, width, height, new Paint().setColor(withAlpha(0xFF000000, 0.55f)));
+
+        float panelW = 304.0f;
+        float panelH = 372.0f;
+        float px = (width - panelW) * 0.5f;
+        float py = (height - panelH) * 0.5f;
+        ctx.drawRoundedRect(RoundedRectangle.ofXYWHR(px, py, panelW, panelH, 18),
+                new Paint().setColor(SHELL));
+
+        // ---- 顶部：标题 + 关闭按钮，两者垂直居中对齐 ----
+        float headerY = py + 20;
+        float closeSize = 28;
+        float closeX = px + panelW - closeSize - 20;
+        // 标题 y 由按钮中心反推，保证文字垂直居中和按钮同一条中线
+        float titleH = HEADING_FONT.getHeight();
+        float titleY = headerY + (closeSize - titleH) * 0.5f;
+        GlHelper.drawText("Sign in with NetEase Music", px + 24, titleY, HEADING_FONT, CREAM);
+
+        boolean closeHover = contains(mouseX, mouseY, closeX, headerY, closeSize, closeSize);
+        ctx.drawRoundedRect(RoundedRectangle.ofXYWHR(closeX, headerY, closeSize, closeSize, closeSize * 0.5f),
+                new Paint().setColor(closeHover ? RAISED : SIDEBAR));
+        // 关闭图标用 Material Icons 的 close（ICON_CLOSE，和顶部 headerAction 同一个），
+        // 之前用 "×" 字符 + HEADING_FONT，苹方里没有这个字形，画出来是空白。
+        float crossW = ICON_FONT.getWidth(ICON_CLOSE);
+        float crossH = ICON_FONT.getHeight();
+        GlHelper.drawText(ICON_CLOSE,
+                closeX + (closeSize - crossW) * 0.5f,
+                headerY + (closeSize - crossH) * 0.5f,
+                ICON_FONT, closeHover ? ACCENT : MUTED);
+        // 弹层走独立列表（屏幕坐标），加到主 clickAreas 会因为坐标系不同点不中
+        dialogClickAreas.add(new ClickArea(closeX, headerY, closeSize, closeSize, this::closeLoginDialog));
+
+        // ---- 中间：二维码 ----
+        int qrSize = 240;
+        float qrX = px + (panelW - qrSize) * 0.5f;
+        float qrY = py + 72;
+        if (loginQr != null) {
+            // 二维码是黑白的，不要被主题色染色 —— Paint 用纯白
+            Texture tex = new Texture(loginQr.location(), qrSize, qrSize);
+            ctx.drawTexture(tex,
+                    Rectangle.ofXYWH(0, 0, qrSize, qrSize),
+                    Rectangle.ofXYWH(qrX, qrY, qrSize, qrSize),
+                    new Paint().setColor(0xFFFFFFFF));
+        } else {
+            ctx.drawRoundedRect(RoundedRectangle.ofXYWHR(qrX, qrY, qrSize, qrSize, 8),
+                    new Paint().setColor(RAISED));
+            drawCentered("Generating QR...", qrX, qrY + qrSize * 0.5f - 8, qrSize, BODY_FONT, MUTED);
+        }
+
+        // ---- 底部：状态文字 ----
+        String statusText;
+        int statusColor = MUTED;
+        switch (loginQrStatus) {
+            case WAITING -> {
+                statusText = "Scan with the NetEase Music app";
+                statusColor = MUTED;
+            }
+            case SCANNED -> {
+                statusText = "Confirm sign-in on your phone";
+                statusColor = ACCENT;
+            }
+            case CONFIRMED -> {
+                statusText = "Signed in";
+                statusColor = ACCENT_STRONG;
+            }
+            case EXPIRED -> {
+                statusText = "QR expired — close & reopen to refresh";
+                statusColor = 0xFFFF8080;
+            }
+            default -> {
+                statusText = "Failed — close & reopen to retry";
+                statusColor = 0xFFFF8080;
+            }
+        }
+        drawCentered(statusText, px, qrY + qrSize + 18, panelW, BODY_FONT, statusColor);
+
+        // 登录成功后 1.2 秒自动关弹层，给用户看到 ✓ 的时间
+        if (loginQrStatus == NeteaseOfficialApi.QrStatus.CONFIRMED) {
+            loginQrNextPollMs = Long.MAX_VALUE; // 停掉轮询
+            long since = System.currentTimeMillis() - lastLoginConfirmMs;
+            if (lastLoginConfirmMs == 0L) {
+                lastLoginConfirmMs = System.currentTimeMillis();
+            } else if (since > 1200L) {
+                closeLoginDialog();
+                lastLoginConfirmMs = 0L;
+            }
+        }
     }
 
     private void renderPlaybackBar(DrawContext ctx, float x, float y, float w, float h, float mouseX, float mouseY) {
@@ -560,7 +940,7 @@ public class MusicPlayerScreen extends Screen {
         SongInfo song = player.getCurrentSong();
         ensureAlbum(song);
         ctx.drawRoundedRect(RoundedRectangle.ofXYWHRadii(x, y, w, h, new float[]{0, 0, RADIUS, RADIUS}),
-                new Paint().setColor(0xFF3B2B31));
+                new Paint().setColor(withAlpha(DIVIDER, 0.9f)));
         ctx.drawRectXYWH(x, y, w, 1, new Paint().setColor(RAISED));
 
         float progress = dragTarget == DragTarget.PROGRESS && pendingProgress >= 0
@@ -653,15 +1033,27 @@ public class MusicPlayerScreen extends Screen {
             lyricSongId = song.id;
             lyricScroll = 0;
         }
-        int current = findCurrentLyricLine(lines, MusicPlayer.AUDIO_PLAYER.getCurrentPositionMs());
+        long position = MusicPlayer.AUDIO_PLAYER.getCurrentPositionMs();
+        int current = findCurrentLyricLine(lines, position);
         float lineH = 46.64f;
-        float target = Math.max(0, current * lineH - h * 0.264f);
-        lyricScroll += (target - lyricScroll) * 0.198f;
+        float totalHeight = lines.size() * lineH;
+        // 歌词不足一屏时整体垂直居中，否则按当前行滚动（target 夹在可滚动范围内，防止滚过头）。
+        float topOffset;
+        if (totalHeight < h) {
+            lyricScroll = 0;
+            topOffset = (h - totalHeight) * 0.5f;
+        } else {
+            float maxScroll = totalHeight - h;
+            float target = clamp(current * lineH - h * 0.264f, 0.0f, maxScroll);
+            lyricScroll += (target - lyricScroll) * 0.198f;
+            topOffset = 0;
+        }
 
+        Rectangle viewport = Rectangle.ofXYWH(x, y, w, h);
         ctx.save();
-        ctx.clipRect(Rectangle.ofXYWH(x, y, w, h), true);
+        ctx.clipRect(viewport, true);
         for (int i = 0; i < lines.size(); i++) {
-            float rowY = y + i * lineH - lyricScroll;
+            float rowY = y + topOffset + i * lineH - lyricScroll;
             if (rowY < y - lineH || rowY > y + h) {
                 continue;
             }
@@ -669,10 +1061,69 @@ public class MusicPlayerScreen extends Screen {
             boolean active = i == current;
             FontRenderer font = active ? LYRIC_ACTIVE_FONT : LYRIC_FONT;
             int color = active ? ACCENT_STRONG : distance == 1 ? MUTED : distance == 2 ? withAlpha(MUTED, 0.605f) : DIM;
-            String text = lines.get(i).text() == null || lines.get(i).text().isBlank() ? "···" : lines.get(i).text();
-            GlHelper.drawText(ellipsize(text, font, w), x, rowY, font, color);
+            String raw = lines.get(i).text();
+            String text = ellipsize(raw == null || raw.isBlank() ? "···" : raw, font, w);
+            if (active) {
+                drawKaraokeLine(text, x, rowY, font, lineProgress(lines, current, position));
+            } else {
+                GlHelper.drawText(text, x, rowY, font, color);
+            }
         }
         ctx.restore();
+    }
+
+    /**
+     * 当前行唱到哪儿了，返回 0..1。
+     *
+     * <p>优先按 {@link LyricLine#words()} 的逐字时间精确算（直连网易能拿到 yrc）；
+     * 没拿到逐字时间就退回「本行起点 → 下一行起点」线性分摊。
+     */
+    private static float lineProgress(List<LyricLine> lines, int index, long positionMs) {
+        if (index < 0 || index >= lines.size()) {
+            return 0.0f;
+        }
+        LyricLine line = lines.get(index);
+        // 1) 有逐字数据：当前字的时间窗（wordStart, wordStart+wordDur）内插值
+        List<LyricLine.Word> words = line.words();
+        if (words != null && !words.isEmpty()) {
+            for (int w = 0; w < words.size(); w++) {
+                LyricLine.Word word = words.get(w);
+                long wStart = word.startMs();
+                long wEnd = wStart + Math.max(word.durationMs(), 1L);
+                if (positionMs < wEnd) {
+                    // 字内进度 + 字之前所有字的累计宽度占比
+                    float within = clamp((positionMs - wStart) / (float) (wEnd - wStart), 0.0f, 1.0f);
+                    return (w + within) / words.size();
+                }
+            }
+            return 1.0f;
+        }
+        // 2) 没逐字：按行时长分摊
+        long start = line.timeMs();
+        long end = index + 1 < lines.size() ? lines.get(index + 1).timeMs() : start + 6000L;
+        if (end <= start) {
+            return 1.0f;
+        }
+        return clamp((positionMs - start) / (float) (end - start), 0.0f, 1.0f);
+    }
+
+    /**
+     * 画当前歌词行：未唱部分压暗，已唱部分提亮。
+     *
+     * <p>不做任何发光效果（发光那套 FBO 模糊在这台机器上出雪花噪点，已回滚）。
+     * 只按已唱宽度取完整前缀画亮色，分界逐字推进，能看清唱到哪一句的哪个字。
+     */
+    private void drawKaraokeLine(String text, float x, float rowY, FontRenderer font, float progress) {
+        // 整行先画暗色
+        GlHelper.drawText(text, x, rowY, font, MUTED);
+
+        float sungWidth = font.getWidth(text) * progress;
+        if (sungWidth < 1.0f) {
+            return;
+        }
+        String sung = prefixFitting(text, font, sungWidth);
+        // 已唱前缀提亮，无发光
+        GlHelper.drawText(sung, x, rowY, font, ACCENT_STRONG);
     }
 
     private void renderPlayerTransport(DrawContext ctx, SongInfo song, AudioPlayer player, float mouseX, float mouseY) {
@@ -768,9 +1219,10 @@ public class MusicPlayerScreen extends Screen {
                     radius, radius, radius, radius, 0xFFFFFFFF, albumTexture.getGlId(), 0, 0, 1, 1);
             return;
         }
-        ctx.drawRoundedRect(RoundedRectangle.ofXYWHR(x, y, size, size, radius), new Paint().setColor(GOLD));
+        // 封面还没加载出来时的占位。用主题色而不是写死的土黄，这样跟着换歌配色一起变。
+        ctx.drawRoundedRect(RoundedRectangle.ofXYWHR(x, y, size, size, radius), new Paint().setColor(BERRY));
         float iconY = y + (size - ICON_LARGE.getMetrics().capHeight()) * 0.5f + 8.0f;
-        drawCentered(ICON_MUSIC, x, iconY, size, ICON_LARGE, GOLD_TEXT);
+        drawCentered(ICON_MUSIC, x, iconY, size, ICON_LARGE, ACCENT);
     }
 
     private List<SongInfo> recommendations() {
@@ -823,6 +1275,18 @@ public class MusicPlayerScreen extends Screen {
     public boolean mouseClicked(double mouseX, double mouseY, int button) {
         if (button != 0) {
             return false;
+        }
+        // 登录弹层在最上层：用原始屏幕坐标优先匹配，命中就吞掉点击（不穿透到下层 UI）。
+        // 弹层是在 translate/scale 变换之外画的，所以这里不能走 toDesignX/Y。
+        if (loginDialogOpen) {
+            for (int i = dialogClickAreas.size() - 1; i >= 0; i--) {
+                ClickArea area = dialogClickAreas.get(i);
+                if (area.contains(mouseX, mouseY)) {
+                    area.action().run();
+                    return true;
+                }
+            }
+            return true;
         }
         double designX = toDesignX(mouseX);
         double designY = toDesignY(mouseY);
@@ -1135,8 +1599,18 @@ public class MusicPlayerScreen extends Screen {
         if (albumBytes != null) {
             try {
                 NativeImage image = NativeImage.read(new ByteArrayInputStream(albumBytes));
+                // 取色和压色雾都必须排在 DynamicTexture 前面：它上传后会接管并关闭这张图
+                setTheme(MonetPalette.fromImage(image));
+                NativeImage palette = CoverBackdrop.prepareFluidPalette(image);
                 DynamicTexture texture = new DynamicTexture(image);
                 albumTexture = new Texture(texture.getId(), image.getWidth(), image.getHeight());
+                // 背景交叉淡化：旧色雾 → 新色雾
+                Texture fluid = CoverBackdrop.uploadPalette(palette);
+                if (fluid != null) {
+                    fluidPrev = fluidTexture;
+                    fluidTexture = fluid;
+                    backdropFade = fluidPrev == null ? 1.0f : 0.0f;
+                }
             } catch (Exception e) {
                 System.err.println("[MusicPlayerScreen] Album art failed: " + e.getMessage());
             }
@@ -1154,7 +1628,7 @@ public class MusicPlayerScreen extends Screen {
         albumBytes = null;
         albumLoading = true;
         albumRetryCount++;
-        NeteaseApi.getAlbumPicUrl(song.albumPicUrl).thenAccept(url -> {
+        NeteaseApi.getAlbumPicUrl(song).thenAccept(url -> {
             if (url == null || url.isEmpty()) {
                 albumLoading = false;
                 return;
@@ -1216,6 +1690,23 @@ public class MusicPlayerScreen extends Screen {
 
     private static void drawCentered(String text, float x, float y, float width, FontRenderer font, int color) {
         GlHelper.drawText(text, x + (width - GlHelper.getStringWidth(text, font)) * 0.5f, y, font, color);
+    }
+
+    /**
+     * 取能放进给定宽度的最长前缀。
+     *
+     * <p>和 {@link #ellipsize} 的区别是**不加省略号** —— 卡拉OK已唱部分只该取字，
+     * 补个 "..." 会在扫光头部多出三个点。
+     */
+    private static String prefixFitting(String value, FontRenderer font, float maxWidth) {
+        if (value == null || maxWidth <= 0.0f) {
+            return "";
+        }
+        int end = value.length();
+        while (end > 0 && measure(value.substring(0, end), font) > maxWidth) {
+            end--;
+        }
+        return value.substring(0, end);
     }
 
     private static int withAlpha(int color, float alpha) {

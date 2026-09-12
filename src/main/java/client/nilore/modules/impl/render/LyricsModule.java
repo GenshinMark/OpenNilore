@@ -40,8 +40,8 @@ public class LyricsModule extends Module {
     private static final float PANEL_H = 130;
     private static final float LINE_SPACING = 22;
 
-    private final FontRenderer currentFont = FontPresets.pingfang(19);
-    private final FontRenderer nearFont = FontPresets.pingfang(16);
+    private final FontRenderer currentFont = FontPresets.pingfang(21);
+    private final FontRenderer nearFont = FontPresets.pingfang(18);
 
     public LyricsModule() {
         super("Lyrics", Category.RENDER);

@@ -352,7 +352,7 @@ public class MusicPlayerHud extends HudElement {
         albumLoading = true;
         albumRetryCount++;
 
-        NeteaseApi.getAlbumPicUrl(song.albumPicUrl).thenAccept(picUrl -> {
+        NeteaseApi.getAlbumPicUrl(song).thenAccept(picUrl -> {
             if (picUrl == null || picUrl.isEmpty()) { albumLoading = false; return; }
             try {
                 byte[] bytes = MusicHttp.getBytes(URI.create(picUrl));

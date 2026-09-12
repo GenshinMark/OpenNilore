@@ -38,7 +38,15 @@ public final class MusicHttp {
     }
 
     public static byte[] getBytes(URI uri) throws IOException, InterruptedException {
-        return send(request(uri), HttpResponse.BodyHandlers.ofByteArray()).body();
+        // 封面走网易 CDN（music.126.net），带 Referer 否则防盗链会偶发拒绝（抄 Melodify 的封面下载）。
+        HttpRequest request = HttpRequest.newBuilder()
+                .uri(uri)
+                .timeout(TIMEOUT)
+                .header("User-Agent", USER_AGENT)
+                .header("Referer", "https://music.163.com")
+                .GET()
+                .build();
+        return send(request, HttpResponse.BodyHandlers.ofByteArray()).body();
     }
 
     public static StreamResponse getInputStream(URI uri) throws IOException, InterruptedException {
